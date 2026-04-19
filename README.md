@@ -23,6 +23,23 @@ npm run build
 npm run preview
 ```
 
+### Docker
+
+A multi-stage `Dockerfile` (Node build → nginx serve on port 8080) and a `docker-compose.yml` are included.
+
+```bash
+docker compose up -d --build
+# Open http://localhost:8080
+```
+
+Override the host port with `KEYFALL_PORT`:
+
+```bash
+KEYFALL_PORT=9090 docker compose up -d --build
+```
+
+**Important:** Web MIDI only works in a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) — HTTPS, or `localhost`. If you're fronting this with Traefik / Caddy / nginx-proxy-manager for HTTPS termination, remove the `ports:` block in `docker-compose.yml` and attach to the proxy's network. The container listens on `:8080` inside the Docker network.
+
 ## Project layout
 
 ```
