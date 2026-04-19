@@ -1,8 +1,27 @@
 import { COLORS, NOTE_NAMES } from '../shared/constants.js';
 import { computeKeyLayout, getNoteX, getNoteWidth } from '../shared/piano-keyboard.js';
 
+// Safari <15.4 and older browsers lack CanvasRenderingContext2D.roundRect.
+function ensureRoundRect(ctx) {
+  if (ctx.roundRect) return;
+  ctx.roundRect = function (x, y, w, h, r) {
+    const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+    this.moveTo(x + rr, y);
+    this.lineTo(x + w - rr, y);
+    this.arcTo(x + w, y, x + w, y + rr, rr);
+    this.lineTo(x + w, y + h - rr);
+    this.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+    this.lineTo(x + rr, y + h);
+    this.arcTo(x, y + h, x, y + h - rr, rr);
+    this.lineTo(x, y + rr);
+    this.arcTo(x, y, x + rr, y, rr);
+    return this;
+  };
+}
+
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
+  ensureRoundRect(ctx);
   const state = {
     W: 0,
     H: 0,

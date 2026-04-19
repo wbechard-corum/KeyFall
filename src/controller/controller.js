@@ -25,7 +25,12 @@ export function createController() {
 
   const initial = getSetting('selectedProfileId');
   if (initial && initial !== state.profile.id) {
-    try { setProfile(initial); } catch { /* fall through */ }
+    try {
+      setProfile(initial);
+    } catch (e) {
+      console.warn(`Saved profile "${initial}" not found, falling back to default.`, e);
+      updateSettings({ selectedProfileId: null });
+    }
   }
 
   onSysEx((bytes) => {

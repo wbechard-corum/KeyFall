@@ -13,10 +13,14 @@ export function parseMIDI(buffer) {
   const readU16 = () => { const v = data.getUint16(pos); pos += 2; return v; };
   const readU8 = () => data.getUint8(pos++);
   const readVarLen = () => {
-    let val = 0, b;
+    let val = 0, b, count = 0;
     do {
+      if (pos >= data.byteLength || count >= 4) {
+        throw new Error('Malformed variable-length quantity');
+      }
       b = readU8();
       val = (val << 7) | (b & 0x7F);
+      count++;
     } while (b & 0x80);
     return val;
   };
@@ -24,8 +28,14 @@ export function parseMIDI(buffer) {
   if (readStr(4) !== 'MThd') throw new Error('Not a MIDI file');
   readU32();
   const format = readU16();
+  if (format !== 0 && format !== 1) {
+    throw new Error(`Unsupported MIDI format ${format} (only formats 0 and 1 are supported)`);
+  }
   const numTracks = readU16();
   const ticksPerBeat = readU16();
+  if (ticksPerBeat & 0x8000) {
+    throw new Error('SMPTE timecode MIDI files are not supported (only ticks-per-beat timing)');
+  }
 
   const tracks = [];
   for (let t = 0; t < numTracks; t++) {

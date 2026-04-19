@@ -89,7 +89,7 @@ export function mountController(root) {
 
   buildProfileSelect();
   buildChannelOptions();
-  onTx(() => flashLed());
+  const unsubscribeTx = onTx(() => flashLed());
 
   $$('[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -287,6 +287,6 @@ export function mountController(root) {
   }
 
   return {
-    destroy() { unsubscribe(); unsubscribeMIDI(); },
+    destroy() { unsubscribe(); unsubscribeMIDI(); unsubscribeTx(); },
   };
 }
