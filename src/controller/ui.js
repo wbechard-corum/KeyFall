@@ -84,10 +84,12 @@ export function mountController(root) {
 
   const controller = createController();
   let activeTab = 'patches';
+  let lastRenderedBankKey = null;  // `${profileId}:${bankIndex}` — triggers patch-list rebuild
+  let lastRenderedBanksFor = null; // profile id for bank bar
 
   buildProfileSelect();
   buildChannelOptions();
-  onTx(() => flashLed());
+  const unsubscribeTx = onTx(() => flashLed());
 
   $$('[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -131,9 +133,6 @@ export function mountController(root) {
       container.appendChild(btn);
     }
   }
-
-  let lastRenderedBankKey = null;  // `${profileId}:${bankIndex}` — triggers patch-list rebuild
-  let lastRenderedBanksFor = null; // profile id for bank bar
 
   function render(snap) {
     const { profile, bankIndex, patchIndex, channel, effectValues, controlStates, lastMessage, lastIdentity } = snap;
@@ -288,6 +287,6 @@ export function mountController(root) {
   }
 
   return {
-    destroy() { unsubscribe(); unsubscribeMIDI(); },
+    destroy() { unsubscribe(); unsubscribeMIDI(); unsubscribeTx(); },
   };
 }
