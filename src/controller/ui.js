@@ -1,7 +1,8 @@
 import { createController } from './controller.js';
-import { renderEffects, renderControls } from './effects-ui.js';
+import { mountEffects, mountControls } from './effects-ui.js';
 import { availableProfiles } from './profile-loader.js';
 import { onTx } from '../midi/output.js';
+import { onStateChange, getState, selectInput, selectOutput, requestAccess } from '../midi/connection.js';
 
 const TEMPLATE = `
   <div class="controller-root">
@@ -47,6 +48,14 @@ const TEMPLATE = `
 
     <div class="settings-panel hidden" data-role="settings-panel">
       <div class="setting-group">
+        <div class="setting-label">MIDI Output Device</div>
+        <div class="device-list" data-role="output-devices"></div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-label">MIDI Input Device</div>
+        <div class="device-list" data-role="input-devices"></div>
+      </div>
+      <div class="setting-group">
         <div class="setting-label">MIDI Channel</div>
         <div class="setting-options" data-role="channel-options"></div>
       </div>
@@ -86,6 +95,7 @@ export function mountController(root) {
   $('[data-action="identity"]').addEventListener('click', () => controller.sendIdentityRequest());
 
   const unsubscribe = controller.onChange(render);
+  const unsubscribeMIDI = onStateChange(() => render(controller.getSnapshot()));
   render(controller.getSnapshot());
 
   function switchTab(tab) {
@@ -122,6 +132,9 @@ export function mountController(root) {
     }
   }
 
+  let lastRenderedBankKey = null;  // `${profileId}:${bankIndex}` — triggers patch-list rebuild
+  let lastRenderedBanksFor = null; // profile id for bank bar
+
   function render(snap) {
     const { profile, bankIndex, patchIndex, channel, effectValues, controlStates, lastMessage, lastIdentity } = snap;
 
@@ -142,10 +155,16 @@ export function mountController(root) {
     $('[data-role="lcd-channel"]').textContent = channel + 1;
     $('[data-role="lcd-msg"]').textContent = lastMessage || 'READY';
 
-    renderBankBar(profile.banks, bankIndex);
-    if (activeTab === 'patches') renderPatchList(patches, patchIndex);
-    if (activeTab === 'effects') renderEffects($('[data-role="fx-sliders"]'), profile, effectValues, (id, v) => controller.setEffectValue(id, v));
-    if (activeTab === 'controls') renderControls($('[data-role="controls-list"]'), profile, controlStates, (id) => controller.toggleControl(id));
+    renderBankBar(profile, bankIndex);
+    renderPatchList(profile, patches, bankIndex, patchIndex);
+
+    if (activeTab === 'effects') {
+      mountEffects($('[data-role="fx-sliders"]'), profile, (id, v) => controller.setEffectValue(id, v))(effectValues);
+    }
+    if (activeTab === 'controls') {
+      mountControls($('[data-role="controls-list"]'), profile, (id) => controller.toggleControl(id))(controlStates);
+    }
+    if (activeTab === 'settings') renderDeviceLists();
 
     $$('[data-role="channel-options"] .setting-opt').forEach((btn, i) => {
       btn.classList.toggle('active', i === channel);
@@ -162,33 +181,46 @@ export function mountController(root) {
     }
   }
 
-  function renderBankBar(banks, activeIdx) {
+  function renderBankBar(profile, activeIdx) {
     const bar = $('[data-role="bank-bar"]');
-    bar.innerHTML = '';
-    banks.forEach((bank, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'bank-btn' + (i === activeIdx ? ' active' : '');
-      btn.textContent = bank.label;
-      btn.addEventListener('click', () => controller.setBank(i));
-      bar.appendChild(btn);
+    if (lastRenderedBanksFor !== profile.id) {
+      bar.innerHTML = '';
+      profile.banks.forEach((bank, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'bank-btn';
+        btn.textContent = bank.label;
+        btn.addEventListener('click', () => controller.setBank(i));
+        bar.appendChild(btn);
+      });
+      lastRenderedBanksFor = profile.id;
+    }
+    bar.querySelectorAll('.bank-btn').forEach((btn, i) => {
+      btn.classList.toggle('active', i === activeIdx);
     });
   }
 
-  function renderPatchList(patches, activeIdx) {
+  function renderPatchList(profile, patches, bankIndex, patchIndex) {
     const list = $('[data-role="patch-list"]');
-    list.innerHTML = '';
-    patches.forEach((name, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'patch-item' + (i === activeIdx ? ' active' : '');
-      btn.innerHTML = `
-        <span class="patch-num">${String(i + 1).padStart(3, '0')}</span>
-        <span class="patch-name">${name}</span>
-      `;
-      btn.addEventListener('click', () => {
-        controller.setPatch(i);
-        btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const bankKey = `${profile.id}:${bankIndex}`;
+    if (lastRenderedBankKey !== bankKey) {
+      list.innerHTML = '';
+      patches.forEach((name, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'patch-item';
+        btn.innerHTML = `
+          <span class="patch-num">${String(i + 1).padStart(3, '0')}</span>
+          <span class="patch-name">${name}</span>
+        `;
+        btn.addEventListener('click', () => {
+          controller.setPatch(i);
+          btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        });
+        list.appendChild(btn);
       });
-      list.appendChild(btn);
+      lastRenderedBankKey = bankKey;
+    }
+    list.querySelectorAll('.patch-item').forEach((btn, i) => {
+      btn.classList.toggle('active', i === patchIndex);
     });
   }
 
@@ -208,7 +240,54 @@ export function mountController(root) {
     }, 120);
   }
 
+  function renderDeviceLists() {
+    const midi = getState();
+    renderDeviceList($('[data-role="output-devices"]'), midi.outputs, midi.selectedOutputId, (id) => selectOutput(id), 'output');
+    renderDeviceList($('[data-role="input-devices"]'), midi.inputs, midi.selectedInputId, (id) => selectInput(id), 'input');
+  }
+
+  function renderDeviceList(container, devices, selectedId, onPick, kind) {
+    container.innerHTML = '';
+
+    const midi = getState();
+    if (!midi.supported) {
+      container.innerHTML = '<div class="no-devices">Web MIDI not supported. Open in Chrome or Edge.</div>';
+      return;
+    }
+    if (!midi.requested) {
+      const btn = document.createElement('button');
+      btn.className = 'identity-btn';
+      btn.textContent = 'GRANT MIDI ACCESS';
+      btn.addEventListener('click', () => requestAccess({ sysex: true }));
+      container.appendChild(btn);
+      return;
+    }
+    if (midi.error) {
+      container.innerHTML = `<div class="no-devices">MIDI access denied: ${midi.error}</div>`;
+      return;
+    }
+    if (devices.length === 0) {
+      container.innerHTML = `<div class="no-devices">No MIDI ${kind}s found. Connect your keyboard and reload.</div>`;
+      return;
+    }
+
+    devices.forEach(d => {
+      const isActive = d.id === selectedId;
+      const div = document.createElement('button');
+      div.className = 'device-item' + (isActive ? ' active' : '');
+      div.innerHTML = `
+        <div>
+          <div class="device-name">${d.name}</div>
+          <div class="device-id">${d.manufacturer || '—'} · ${d.id.slice(0, 12)}</div>
+        </div>
+        ${isActive ? '<span class="device-check">✓</span>' : ''}
+      `;
+      div.addEventListener('click', () => onPick(d.id));
+      container.appendChild(div);
+    });
+  }
+
   return {
-    destroy() { unsubscribe(); },
+    destroy() { unsubscribe(); unsubscribeMIDI(); },
   };
 }

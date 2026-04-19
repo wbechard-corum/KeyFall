@@ -1,21 +1,32 @@
 const FX_COLORS = ['#4FC3F7', '#81C784', '#FFB74D', '#E57373', '#B39DDB', '#FFB3A7', '#A5D6A7', '#9FA8DA', '#CE93D8'];
 
-export function renderEffects(container, profile, values, onChange) {
+export function mountEffects(container, profile, onChange) {
+  // Idempotent: only rebuild the slider DOM when the profile changes,
+  // otherwise update existing fill/thumb/value in place. Rebuilding mid-drag
+  // would orphan the pointermove listener and break the slider.
+  if (container.dataset.profileId === profile.id) {
+    return container._fxUpdate;
+  }
+
   container.innerHTML = '';
+  container.dataset.profileId = profile.id;
+
+  const sliders = new Map();
+
   profile.effects.forEach((fx, idx) => {
     const color = FX_COLORS[idx % FX_COLORS.length];
-    const value = values[fx.id] ?? fx.default ?? 0;
-    const pct = ((value - (fx.min ?? 0)) / ((fx.max ?? 127) - (fx.min ?? 0))) * 100;
+    const min = fx.min ?? 0;
+    const max = fx.max ?? 127;
 
     const slider = document.createElement('div');
     slider.className = 'fx-slider';
     slider.innerHTML = `
       <div class="fx-label" style="color:${color}">${fx.label}</div>
       <div class="fx-track" data-fx="${fx.id}">
-        <div class="fx-fill" style="height:${pct}%;background:linear-gradient(to top,${color}22,${color}66)"></div>
-        <div class="fx-thumb" style="bottom:${pct}%;background:${color}"></div>
+        <div class="fx-fill" style="background:linear-gradient(to top,${color}22,${color}66)"></div>
+        <div class="fx-thumb" style="background:${color}"></div>
       </div>
-      <div class="fx-value" data-role="fx-val">${value}</div>
+      <div class="fx-value"></div>
       <div class="fx-cc">CC ${fx.cc}</div>
     `;
     container.appendChild(slider);
@@ -23,55 +34,93 @@ export function renderEffects(container, profile, values, onChange) {
     const track = slider.querySelector('.fx-track');
     const fill = slider.querySelector('.fx-fill');
     const thumb = slider.querySelector('.fx-thumb');
-    const valLabel = slider.querySelector('[data-role="fx-val"]');
+    const valLabel = slider.querySelector('.fx-value');
 
-    const min = fx.min ?? 0;
-    const max = fx.max ?? 127;
+    function applyValue(v) {
+      const pct = ((v - min) / (max - min)) * 100;
+      fill.style.height = `${pct}%`;
+      thumb.style.bottom = `${pct}%`;
+      valLabel.textContent = v;
+    }
 
     function updateFromY(clientY) {
       const rect = track.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
       const val = Math.round(min + ratio * (max - min));
-      const pct2 = ratio * 100;
-      fill.style.height = `${pct2}%`;
-      thumb.style.bottom = `${pct2}%`;
-      valLabel.textContent = val;
+      applyValue(val);
       onChange(fx.id, val);
     }
 
+    // Listeners on `document` so drag survives any container re-render.
     track.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      track.setPointerCapture(e.pointerId);
+      try { track.setPointerCapture(e.pointerId); } catch { /* ignore */ }
       updateFromY(e.clientY);
 
       const move = (ev) => { ev.preventDefault(); updateFromY(ev.clientY); };
       const up = () => {
-        track.removeEventListener('pointermove', move);
-        track.removeEventListener('pointerup', up);
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', up);
+        document.removeEventListener('pointercancel', up);
       };
-      track.addEventListener('pointermove', move);
-      track.addEventListener('pointerup', up);
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up);
+      document.addEventListener('pointercancel', up);
     });
+
+    sliders.set(fx.id, { applyValue });
   });
+
+  const update = (values) => {
+    for (const fx of profile.effects) {
+      const v = values[fx.id] ?? fx.default ?? 0;
+      sliders.get(fx.id)?.applyValue(v);
+    }
+  };
+
+  container._fxUpdate = update;
+  return update;
 }
 
-export function renderControls(container, profile, states, onToggle) {
-  container.innerHTML = '';
-  if (!profile.controls || profile.controls.length === 0) {
-    container.innerHTML = '<div class="no-controls">No toggle controls defined for this profile.</div>';
-    return;
+export function mountControls(container, profile, onToggle) {
+  if (container.dataset.profileId === profile.id) {
+    return container._ctlUpdate;
   }
 
+  container.innerHTML = '';
+  container.dataset.profileId = profile.id;
+
+  if (!profile.controls || profile.controls.length === 0) {
+    container.innerHTML = '<div class="no-controls">No toggle controls defined for this profile.</div>';
+    container._ctlUpdate = () => {};
+    return container._ctlUpdate;
+  }
+
+  const buttons = new Map();
+
   profile.controls.forEach((ctl) => {
-    const on = !!states[ctl.id];
     const btn = document.createElement('button');
-    btn.className = 'control-toggle' + (on ? ' active' : '');
+    btn.className = 'control-toggle';
     btn.innerHTML = `
       <span class="control-label">${ctl.label}</span>
       <span class="control-cc">CC ${ctl.cc}</span>
-      <span class="control-state">${on ? 'ON' : 'OFF'}</span>
+      <span class="control-state">OFF</span>
     `;
     btn.addEventListener('click', () => onToggle(ctl.id));
     container.appendChild(btn);
+    buttons.set(ctl.id, btn);
   });
+
+  const update = (states) => {
+    for (const ctl of profile.controls) {
+      const btn = buttons.get(ctl.id);
+      if (!btn) continue;
+      const on = !!states[ctl.id];
+      btn.classList.toggle('active', on);
+      btn.querySelector('.control-state').textContent = on ? 'ON' : 'OFF';
+    }
+  };
+
+  container._ctlUpdate = update;
+  return update;
 }

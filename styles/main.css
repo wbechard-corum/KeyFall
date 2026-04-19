@@ -2,15 +2,15 @@
 
 :root {
   --bg: #0c0c0f;
-  --surface: #131318;
-  --surface-2: #1a1a22;
-  --surface-3: #1c1c1c;
-  --border: #252530;
-  --border-light: #2a2a2a;
-  --text: #c8c8d0;
-  --text-dim: #6a6a78;
-  --text-muted: #3a3a48;
-  --accent: #FF6D00;
+  --surface: #16161c;
+  --surface-2: #1f1f28;
+  --surface-3: #262631;
+  --border: #34343f;
+  --border-light: #3a3a48;
+  --text: #ececf2;
+  --text-dim: #b4b4c2;
+  --text-muted: #8888a0;
+  --accent: #FF7A1A;
   --accent-dim: #FF6D0033;
   --right-hand: #4FC3F7;
   --left-hand: #FF8A65;
@@ -671,6 +671,33 @@ canvas { display: block; width: 100%; height: 100%; }
   color: var(--text-dim);
   line-height: 1.5;
 }
+
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.device-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+}
+
+.device-item:active { background: var(--surface-3); }
+.device-item.active { border-color: var(--green); background: rgba(129,199,132,0.08); }
+.device-name { font-size: 13px; color: var(--text); }
+.device-id { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--text-muted); margin-top: 2px; }
+.device-check { color: var(--green); font-size: 16px; font-weight: 700; }
+.no-devices { padding: 12px; text-align: center; color: var(--text-muted); font-size: 12px; }
 
 .footer {
   padding: 8px 16px;
