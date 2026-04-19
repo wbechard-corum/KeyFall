@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<title>JUNO-G Controller</title>
+<link rel="manifest" href="data:application/json,{%22name%22:%22JUNO-G%20Controller%22,%22short_name%22:%22JUNO-G%22,%22start_url%22:%22.%22,%22display%22:%22standalone%22,%22background_color%22:%220a0a0a%22,%22theme_color%22:%220a0a0a%22}">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --surface-2: #161616;
+    --surface-3: #1c1c1c;
+    --border: #222;
+    --border-light: #2a2a2a;
+    --text: #ccc;
+    --text-dim: #666;
+    --text-muted: #444;
+    --accent: #FF6D00;
+    --accent-dim: #FF6D0033;
+    --lcd-bg: #0a0f05;
+    --lcd-border: #1a2a10;
+    --lcd-text: #8BC34A;
+    --lcd-dim: #4a6a30;
+    --blue: #4FC3F7;
+    --green: #81C784;
+    --orange: #FFB74D;
+    --red: #E57373;
+    --purple: #B39DDB;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #141414, var(--surface));
+    flex-shrink: 0;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 5px;
+    color: var(--text-muted);
+    font-weight: 300;
+  }
+
+  .brand-name {
+    font-family: 'Outfit', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 1px;
+    line-height: 1.1;
+  }
+
+  .conn-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    transition: all 0.2s;
+  }
+
+  .conn-status:active { background: var(--surface-2); }
+
+  .conn-status.connected { color: var(--green); border-color: #2a3a25; }
+
+  .conn-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: all 0.3s;
+  }
+
+  .conn-dot.on {
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+  }
+
+  /* ── LCD Display ── */
+  .lcd {
+    margin: 12px 16px 0;
+    background: var(--lcd-bg);
+    border: 1px solid var(--lcd-border);
+    border-radius: 5px;
+    padding: 10px 14px;
+    box-shadow: inset 0 1px 10px rgba(0,0,0,0.5), 0 0 15px rgba(76,175,80,0.04);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .lcd::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+  }
+
+  .lcd-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .lcd-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--lcd-dim);
+    letter-spacing: 2px;
+  }
+
+  .lcd-patch {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--lcd-text);
+    margin-top: 4px;
+    text-shadow: 0 0 12px rgba(139,195,74,0.3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: relative;
+  }
+
+  .lcd-midi-info {
+    margin-top: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--lcd-dim);
+    letter-spacing: 1px;
+    display: flex;
+    gap: 12px;
+  }
+
+  /* ── Bank Selector ── */
+  .bank-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .bank-bar::-webkit-scrollbar { display: none; }
+
+  .bank-btn {
+    flex: 1 0 auto;
+    min-width: 44px;
+    padding: 11px 4px;
+    background: transparent;
+    color: var(--text-dim);
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .bank-btn:active { background: var(--surface-2); }
+
+  .bank-btn.active {
+    color: var(--accent);
+    font-weight: 700;
+    border-bottom-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  /* ── Tab Bar ── */
+  .tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: var(--surface-2);
+  }
+
+  /* ── Patch List ── */
+  .patch-list {
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px 0;
+  }
+
+  .patch-list.hidden { display: none; }
+
+  .patch-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 12px 16px;
+    background: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: 'Outfit', sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    text-align: left;
+    gap: 14px;
+    transition: all 0.08s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .patch-item:active { background: var(--surface-2); }
+
+  .patch-item.active {
+    background: linear-gradient(90deg, var(--accent-dim), transparent);
+    border-left-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .patch-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 500;
+    min-width: 32px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .patch-item.active .patch-num { color: var(--accent); }
+
+  .patch-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .patch-cat {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+
+  .patch-item.active .patch-cat { color: var(--text-dim); }
+
+  /* ── Effects Panel ── */
+  .effects-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 16px;
+  }
+
+  .effects-panel.hidden { display: none; }
+
+  .fx-sliders {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    padding: 0 8px;
+  }
+
+  .fx-slider {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 72px;
+  }
+
+  .fx-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    opacity: 0.9;
+  }
+
+  .fx-track {
+    position: relative;
+    width: 36px;
+    height: 140px;
+    background: var(--bg);
+    border-radius: 5px;
+    border: 1px solid var(--border-light);
+    overflow: hidden;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .fx-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transition: height 0.05s;
+    border-radius: 0 0 4px 4px;
+  }
+
+  .fx-thumb {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    transition: bottom 0.05s;
+  }
+
+  .fx-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 8px;
+    color: #fff;
+  }
+
+  .fx-cc {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 3px;
+  }
+
+  /* ── Settings Panel ── */
+  .settings-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 16px;
+  }
+
+  .settings-panel.hidden { display: none; }
+
+  .setting-group {
+    margin-bottom: 24px;
+  }
+
+  .setting-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .setting-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .setting-opt {
+    padding: 8px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .setting-opt:active { background: var(--surface-3); }
+  .setting-opt.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .device-list { margin-top: 8px; }
+
+  .device-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .device-item:active { background: var(--surface-3); }
+
+  .device-item.active {
+    border-color: var(--green);
+    background: rgba(129,199,132,0.08);
+  }
+
+  .device-name {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .device-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .device-check {
+    color: var(--green);
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .no-devices {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .no-midi-warning {
+    padding: 20px;
+    text-align: center;
+    color: var(--red);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .identity-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-top: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .identity-btn:active { background: var(--surface-3); }
+
+  .identity-result {
+    margin-top: 10px;
+    padding: 12px;
+    background: var(--lcd-bg);
+    border: 1px solid var(--lcd-border);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--lcd-text);
+    white-space: pre-wrap;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    padding: 8px 16px;
+    padding-bottom: calc(8px + var(--safe-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+  }
+
+  .midi-activity {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    margin-right: 6px;
+    transition: all 0.1s;
+  }
+
+  .midi-activity.flash {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  /* ── Animations ── */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .lcd { animation: fadeIn 0.4s ease-out; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="brand-label">ROLAND</div>
+        <div class="brand-name">JUNO-G</div>
+      </div>
+      <div class="conn-status" id="connStatus" onclick="toggleConnection()">
+        <div class="conn-dot" id="connDot"></div>
+        <span id="connLabel">NO DEVICE</span>
+      </div>
+    </div>
+    <div class="lcd">
+      <div class="lcd-row">
+        <span class="lcd-label" id="lcdBank">PR-A</span>
+        <span class="lcd-label" id="lcdPatchNum">001/128</span>
+      </div>
+      <div class="lcd-patch" id="lcdPatchName">---</div>
+      <div class="lcd-midi-info">
+        <span>CH <span id="lcdChannel">1</span></span>
+        <span id="lcdMidiMsg">READY</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bank Selector -->
+  <div class="bank-bar" id="bankBar"></div>
+
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="patches" onclick="switchTab('patches')">PATCHES</button>
+    <button class="tab-btn" data-tab="effects" onclick="switchTab('effects')">EFFECTS</button>
+    <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">SETTINGS</button>
+  </div>
+
+  <!-- Patch List -->
+  <div class="patch-list" id="patchList"></div>
+
+  <!-- Effects Panel -->
+  <div class="effects-panel hidden" id="effectsPanel">
+    <div class="fx-sliders" id="fxSliders"></div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div class="settings-panel hidden" id="settingsPanel">
+    <div class="setting-group">
+      <div class="setting-label">MIDI Channel</div>
+      <div class="setting-options" id="channelOptions"></div>
+    </div>
+    <div class="setting-group">
+      <div class="setting-label">Output Device</div>
+      <div class="device-list" id="deviceList">
+        <div class="no-devices">No MIDI devices found.<br>Connect your Juno-G and tap the status button above.</div>
+      </div>
+    </div>
+    <div class="setting-group">
+      <div class="setting-label">Diagnostics</div>
+      <button class="identity-btn" onclick="sendIdentityRequest()">SEND IDENTITY REQUEST (F0 7E 7F 06 01 F7)</button>
+      <div class="identity-result hidden" id="identityResult"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span><span class="midi-activity" id="midiLed"></span>MIDI <span id="footerStatus">OFFLINE</span></span>
+    <span>v1.0</span>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// JUNO-G MIDI CONTROLLER — Web MIDI API
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Bank definitions (MSB/LSB per Roland Juno-G MIDI Implementation) ──
+const BANKS = [
+  { id: 'PR-A', label: 'PR-A', msb: 87, lsb: 0 },
+  { id: 'PR-B', label: 'PR-B', msb: 87, lsb: 1 },
+  { id: 'PR-C', label: 'PR-C', msb: 87, lsb: 2 },
+  { id: 'PR-D', label: 'PR-D', msb: 87, lsb: 3 },
+  { id: 'PR-E', label: 'PR-E', msb: 87, lsb: 4 },
+  { id: 'PR-F', label: 'PR-F', msb: 87, lsb: 5 },
+  { id: 'PR-G', label: 'PR-G', msb: 87, lsb: 6 },
+  { id: 'PR-H', label: 'PR-H', msb: 87, lsb: 7 },
+  { id: 'USER', label: 'USER', msb: 87, lsb: 8 },
+  { id: 'GM', label: 'GM', msb: 121, lsb: 0 },
+];
+
+// ── Effect CC mappings ──
+const EFFECTS = [
+  { id: 'reverb',    label: 'REVERB',  cc: 91, color: '#4FC3F7', value: 40 },
+  { id: 'chorus',    label: 'CHORUS',  cc: 93, color: '#81C784', value: 30 },
+  { id: 'cutoff',    label: 'CUTOFF',  cc: 74, color: '#FFB74D', value: 127 },
+  { id: 'resonance', label: 'RESO',    cc: 71, color: '#E57373', value: 20 },
+  { id: 'volume',    label: 'VOLUME',  cc: 7,  color: '#B39DDB', value: 100 },
+];
+
+// ── Factory patch names ──
+// PR-A: General MIDI-style preset bank
+const PATCHES_PRA = [
+  "Juno-G Grand","Bright Grand","Soft Grand","Honky-Tonk","FM E.Piano 1","FM E.Piano 2",
+  "Wurly EP","Clav AC","Vibraphone","Marimba","Church Organ","Jazz Organ",
+  "Rock Organ","Nylon Gtr","Steel Gtr","Jazz Guitar","Clean Gtr","Mute Guitar",
+  "Overdrive Gtr","Dist Guitar","Acoustic Bs","Fingered Bs","Pick Bass","Fretless Bs",
+  "Slap Bass","Synth Bass 1","Synth Bass 2","Violin","Viola","Cello",
+  "Contrabass","Tremolo Str","Pizzicato","Harp","Timpani","Strings",
+  "Slow Strings","Synth Str 1","Synth Str 2","Choir Aahs","Voice Oohs","SynVox",
+  "Orchestra Hit","Trumpet","Trombone","Tuba","Muted Trumpet","French Horn",
+  "Brass Section","Synth Brass 1","Synth Brass 2","Soprano Sax","Alto Sax","Tenor Sax",
+  "Baritone Sax","Oboe","English Horn","Bassoon","Clarinet","Piccolo",
+  "Flute","Recorder","Pan Flute","Bottle Blow","Shakuhachi","Whistle",
+  "Ocarina","Square Lead","Saw Lead","Calliope","Chiff Lead","Charang",
+  "Voice Lead","Fifth Lead","Bass & Lead","New Age Pad","Warm Pad","Polysynth",
+  "Choir Pad","Bowed Pad","Metallic","Halo Pad","Sweep Pad","Rain",
+  "Soundtrack","Crystal","Atmosphere","Brightness","Goblins","Echoes",
+  "Sci-Fi","Sitar","Banjo","Shamisen","Koto","Kalimba",
+  "Bag Pipe","Fiddle","Shanai","Tinkle Bell","Agogo","Steel Drums",
+  "Woodblock","Taiko Drum","Melodic Tom","Synth Drum","Reverse Cym","Gtr Fret Noise",
+  "Breath Noise","Seashore","Bird Tweet","Telephone","Helicopter","Applause",
+  "Gunshot","JP8 Strings","Juno Rave","Techno Saw","SuperSaw Pad","Trance Lead",
+  "D-50 Stack","Fantasia","Vintage Org","Perc Organ","Rock Piano","Hard EP",
+  "Soft Pad","Vox Pad","Analog Str","Syn Choir","Bright Saw","Dark Pad",
+];
+
+const PATCHES_PRB = [
+  "PLS VocoBassline","PLS Next Step","SBS JP8 Seq Bs","BTS RetroSonic 1",
+  "PNO Stage Grand","PNO Jazz Grand","PNO Pop Piano","PNO Rock Piano",
+  "EP Suitcase","EP DX Roads","EP Vintage Wurly","EP Dyno Tine",
+  "ORG Full Drawbar","ORG Perc Click","ORG Gospel Spin","ORG Rock Organ",
+  "GTR Nylon Solo","GTR Steel Pick","GTR Jazz Clean","GTR Crunch Mute",
+  "GTR Power Stack","GTR Dist Lead","BAS Finger Funk","BAS Pick Pop",
+  "BAS Fretless Vib","BAS Synth Round","BAS Sub Growl","BAS Acid Line",
+  "STR Film Score","STR Lush Pad","STR Chamber","STR Pizz Section",
+  "BRS Big Band","BRS Trumpet Solo","BRS French Horns","BRS Synth Stab",
+  "SAX Alto Express","SAX Tenor Smooth","SAX Bari Honk","WND Flute Solo",
+  "WND Oboe Lyric","WND Clarinet","WND Pan Pipes","VOX Cathedral",
+  "VOX Synth Choir","VOX Talk Box","VOX Whisper","LED Trance Saw",
+  "LED Hoover","LED Sync Sweep","LED Screamer","PAD Warm Analog",
+  "PAD Glass Wash","PAD Evolve","PAD Dark Matter","SFX Riser",
+  "SFX Downfall","SFX Glitch","SFX Texture","KEY Clav Wah",
+  "KEY Harpsichord","KEY Celesta","KEY Music Box","KIT Analog 808",
+  "KIT Acoustic","KIT Electronic","KIT Percussion","SEQ Arp Trance",
+  "SEQ Gated Pad","SEQ Pulse Drive","SEQ Retro Step","CMB Layer Grand",
+  "CMB EP & Strings","CMB Organ & Brass","CMB Synth Stack","PLS Ambient",
+  "PLS Chillwave","PLS Deep House","PLS Future Bass","BTS Drum & Bass",
+  "BTS Lo-Fi HipHop","BTS Trap Kit","BTS House Drive","SBS Wobble",
+  "SBS Reese","SBS FM Bass","SBS Pluck Bass","PAD Vapor Wash",
+  "PAD Ice Crystal","PAD Solar Wind","PAD Nebula","LED Supersaw",
+  "LED Phase Dist","LED Bit Crush","LED Ring Mod","STR Ensemble",
+  "STR Solo Violin","STR Cello Song","STR Harp Gliss","BRS Muted Trp",
+  "BRS Trombone Sec","BRS Synth Poly","BRS Stab Minor","ORG Cathedral",
+  "ORG Combo Jazz","ORG Prog Rock","ORG Transistor","GTR 12-String",
+  "GTR Wah Funk","GTR Ambient Swl","GTR Metal Chug","PNO Bright Pop",
+  "PNO Dark Ballad","PNO Tack Piano","PNO Detuned Felt","EP Crystal Tine",
+  "EP Phase Roads","EP Warm Pad EP","EP Bellish","KIT TR-808 Full",
+  "KIT CR-78 Retro","KIT Breakbeat","KIT World Perc","SFX White Noise",
+  "SFX Vinyl Crackle","SFX Tape Stop","SFX Sci-Fi Sweep","BTS Deep Tech",
+];
+
+// Placeholder generator for banks without full patch data
+function makePlaceholders(bankId) {
+  return Array.from({ length: 128 }, (_, i) => `${bankId} Patch ${String(i+1).padStart(3,'0')}`);
+}
+
+const ALL_PATCHES = {
+  'PR-A': PATCHES_PRA,
+  'PR-B': PATCHES_PRB,
+  'PR-C': makePlaceholders('PR-C'),
+  'PR-D': makePlaceholders('PR-D'),
+  'PR-E': makePlaceholders('PR-E'),
+  'PR-F': makePlaceholders('PR-F'),
+  'PR-G': makePlaceholders('PR-G'),
+  'PR-H': makePlaceholders('PR-H'),
+  'USER': makePlaceholders('USER'),
+  'GM':   makePlaceholders('GM'),
+};
+
+// ── State ──
+let midiAccess = null;
+let midiOutput = null;
+let midiInput = null;
+let selectedBank = 'PR-A';
+let selectedPatch = 0;
+let midiChannel = 0; // 0-indexed
+let activeTab = 'patches';
+
+// ── DOM helpers ──
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+// ── MIDI Core ──
+async function initMIDI() {
+  if (!navigator.requestMIDIAccess) {
+    $('#settingsPanel .no-devices')?.remove();
+    const warn = document.createElement('div');
+    warn.className = 'no-midi-warning';
+    warn.innerHTML = 'Web MIDI is not supported in this browser.<br>Open this page in <strong>Chrome</strong> on Android or desktop.';
+    $('#deviceList').appendChild(warn);
+    return;
+  }
+
+  try {
+    midiAccess = await navigator.requestMIDIAccess({ sysex: true });
+    midiAccess.onstatechange = () => refreshDevices();
+    refreshDevices();
+    autoConnect();
+  } catch (e) {
+    console.error('MIDI access denied:', e);
+    updateConnectionUI(false);
+  }
+}
+
+function refreshDevices() {
+  const list = $('#deviceList');
+  list.innerHTML = '';
+
+  const outputs = Array.from(midiAccess.outputs.values());
+  if (outputs.length === 0) {
+    list.innerHTML = '<div class="no-devices">No MIDI devices found.<br>Connect your Juno-G via USB.</div>';
+    return;
+  }
+
+  outputs.forEach((output) => {
+    const div = document.createElement('div');
+    div.className = 'device-item' + (midiOutput && midiOutput.id === output.id ? ' active' : '');
+    div.innerHTML = `
+      <div>
+        <div class="device-name">${output.name || 'Unknown Device'}</div>
+        <div class="device-id">${output.manufacturer || ''} · ${output.id.slice(0,12)}</div>
+      </div>
+      ${midiOutput && midiOutput.id === output.id ? '<span class="device-check">✓</span>' : ''}
+    `;
+    div.onclick = () => selectDevice(output.id);
+    list.appendChild(div);
+  });
+}
+
+function autoConnect() {
+  const outputs = Array.from(midiAccess.outputs.values());
+  // Try to find a Roland device first
+  const roland = outputs.find(o => (o.name || '').toLowerCase().includes('juno') || (o.manufacturer || '').toLowerCase().includes('roland'));
+  if (roland) {
+    selectDevice(roland.id);
+  } else if (outputs.length === 1) {
+    selectDevice(outputs[0].id);
+  }
+}
+
+function selectDevice(id) {
+  midiOutput = midiAccess.outputs.get(id);
+  // Also grab matching input for sysex responses
+  const inputs = Array.from(midiAccess.inputs.values());
+  midiInput = inputs.find(i => i.name === midiOutput.name) || inputs[0] || null;
+  if (midiInput) {
+    midiInput.onmidimessage = handleMIDIMessage;
+  }
+  updateConnectionUI(true);
+  refreshDevices();
+}
+
+function toggleConnection() {
+  if (midiOutput) {
+    // Disconnect
+    if (midiInput) midiInput.onmidimessage = null;
+    midiOutput = null;
+    midiInput = null;
+    updateConnectionUI(false);
+    refreshDevices();
+  } else {
+    initMIDI();
+  }
+}
+
+function updateConnectionUI(connected) {
+  const dot = $('#connDot');
+  const label = $('#connLabel');
+  const status = $('#connStatus');
+  const footer = $('#footerStatus');
+
+  if (connected && midiOutput) {
+    dot.classList.add('on');
+    label.textContent = midiOutput.name ? midiOutput.name.slice(0, 16) : 'CONNECTED';
+    status.classList.add('connected');
+    footer.textContent = 'TX';
+  } else {
+    dot.classList.remove('on');
+    label.textContent = 'NO DEVICE';
+    status.classList.remove('connected');
+    footer.textContent = 'OFFLINE';
+  }
+}
+
+// ── MIDI Send ──
+function sendMIDI(data) {
+  if (!midiOutput) return;
+  try {
+    midiOutput.send(data);
+    flashLed();
+  } catch (e) {
+    console.error('MIDI send error:', e);
+  }
+}
+
+function sendPatchChange(bankIndex, patchIndex) {
+  const bank = BANKS[bankIndex] || BANKS.find(b => b.id === selectedBank);
+  if (!bank) return;
+
+  const ch = midiChannel;
+  // Bank Select MSB (CC 0)
+  sendMIDI([0xB0 | ch, 0x00, bank.msb]);
+  // Bank Select LSB (CC 32)
+  sendMIDI([0xB0 | ch, 0x20, bank.lsb]);
+  // Program Change
+  sendMIDI([0xC0 | ch, patchIndex & 0x7F]);
+
+  updateLcdMidiMsg(`CC0:${bank.msb} CC32:${bank.lsb} PC:${patchIndex}`);
+}
+
+function sendCC(cc, value) {
+  sendMIDI([0xB0 | midiChannel, cc & 0x7F, value & 0x7F]);
+  updateLcdMidiMsg(`CC${cc}:${value}`);
+}
+
+function sendIdentityRequest() {
+  if (!midiOutput) {
+    alert('No MIDI device connected.');
+    return;
+  }
+  // Universal SysEx Identity Request
+  sendMIDI([0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7]);
+  const result = $('#identityResult');
+  result.classList.remove('hidden');
+  result.textContent = 'Sent F0 7E 7F 06 01 F7\nWaiting for response...';
+  updateLcdMidiMsg('SYSEX: ID REQ');
+}
+
+function handleMIDIMessage(msg) {
+  const data = msg.data;
+  // Check for Identity Reply: F0 7E xx 06 02 ...
+  if (data.length >= 12 && data[0] === 0xF0 && data[1] === 0x7E && data[3] === 0x06 && data[4] === 0x02) {
+    const mfr = data[5] === 0x41 ? 'Roland' : `0x${data[5].toString(16).padStart(2,'0')}`;
+    const family = `${data[6].toString(16).padStart(2,'0')} ${data[7].toString(16).padStart(2,'0')}`;
+    const model = `${data[8].toString(16).padStart(2,'0')} ${data[9].toString(16).padStart(2,'0')}`;
+    const version = Array.from(data.slice(10, 14)).map(b => b.toString(16).padStart(2,'0')).join(' ');
+
+    const result = $('#identityResult');
+    result.classList.remove('hidden');
+    result.textContent =
+      `Manufacturer: ${mfr}\n` +
+      `Family:       ${family}\n` +
+      `Model:        ${model}\n` +
+      `Version:      ${version}`;
+
+    updateLcdMidiMsg(`FW: ${version}`);
+  }
+}
+
+// ── UI Updates ──
+function flashLed() {
+  const led = $('#midiLed');
+  led.classList.add('flash');
+  setTimeout(() => led.classList.remove('flash'), 120);
+}
+
+function updateLcdMidiMsg(msg) {
+  $('#lcdMidiMsg').textContent = msg;
+}
+
+function updateLCD() {
+  const patches = ALL_PATCHES[selectedBank] || [];
+  const name = patches[selectedPatch] || '---';
+
+  $('#lcdBank').textContent = selectedBank;
+  $('#lcdPatchNum').textContent = `${String(selectedPatch + 1).padStart(3,'0')}/${patches.length}`;
+  $('#lcdPatchName').textContent = name;
+  $('#lcdChannel').textContent = midiChannel + 1;
+}
+
+// ── Build UI ──
+function buildBankBar() {
+  const bar = $('#bankBar');
+  bar.innerHTML = '';
+  BANKS.forEach((bank) => {
+    const btn = document.createElement('button');
+    btn.className = 'bank-btn' + (bank.id === selectedBank ? ' active' : '');
+    btn.textContent = bank.label;
+    btn.dataset.bank = bank.id;
+    btn.onclick = () => {
+      selectedBank = bank.id;
+      selectedPatch = 0;
+      $$('.bank-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      buildPatchList();
+      sendPatchChange(BANKS.findIndex(b => b.id === selectedBank), 0);
+      updateLCD();
+    };
+    bar.appendChild(btn);
+  });
+}
+
+function buildPatchList() {
+  const list = $('#patchList');
+  list.innerHTML = '';
+  const patches = ALL_PATCHES[selectedBank] || [];
+
+  patches.forEach((name, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'patch-item' + (i === selectedPatch ? ' active' : '');
+    btn.innerHTML = `
+      <span class="patch-num">${String(i+1).padStart(3,'0')}</span>
+      <span class="patch-name">${name}</span>
+    `;
+    btn.onclick = () => {
+      selectedPatch = i;
+      $$('.patch-item').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      sendPatchChange(BANKS.findIndex(b => b.id === selectedBank), i);
+      updateLCD();
+      // Scroll active item into view
+      btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
+    list.appendChild(btn);
+  });
+}
+
+function buildEffectsPanel() {
+  const container = $('#fxSliders');
+  container.innerHTML = '';
+
+  EFFECTS.forEach((fx) => {
+    const slider = document.createElement('div');
+    slider.className = 'fx-slider';
+    slider.innerHTML = `
+      <div class="fx-label" style="color:${fx.color}">${fx.label}</div>
+      <div class="fx-track" data-fx="${fx.id}">
+        <div class="fx-fill" style="height:${(fx.value/127)*100}%;background:linear-gradient(to top,${fx.color}22,${fx.color}66)"></div>
+        <div class="fx-thumb" style="bottom:${(fx.value/127)*100}%;background:${fx.color}"></div>
+      </div>
+      <div class="fx-value" id="fxVal-${fx.id}">${fx.value}</div>
+      <div class="fx-cc">CC ${fx.cc}</div>
+    `;
+    container.appendChild(slider);
+
+    // Touch/mouse handling
+    const track = slider.querySelector('.fx-track');
+    const fill = slider.querySelector('.fx-fill');
+    const thumb = slider.querySelector('.fx-thumb');
+    const valLabel = slider.querySelector('.fx-value');
+
+    function updateSlider(clientY) {
+      const rect = track.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, 1 - (clientY - rect.top) / rect.height));
+      const val = Math.round(pct * 127);
+      fx.value = val;
+      fill.style.height = `${pct * 100}%`;
+      thumb.style.bottom = `${pct * 100}%`;
+      valLabel.textContent = val;
+      sendCC(fx.cc, val);
+    }
+
+    track.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      track.setPointerCapture(e.pointerId);
+      updateSlider(e.clientY);
+
+      const move = (ev) => { ev.preventDefault(); updateSlider(ev.clientY); };
+      const up = (ev) => {
+        track.removeEventListener('pointermove', move);
+        track.removeEventListener('pointerup', up);
+      };
+      track.addEventListener('pointermove', move);
+      track.addEventListener('pointerup', up);
+    });
+  });
+}
+
+function buildChannelSelector() {
+  const container = $('#channelOptions');
+  container.innerHTML = '';
+  for (let i = 0; i < 16; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'setting-opt' + (i === midiChannel ? ' active' : '');
+    btn.textContent = i + 1;
+    btn.onclick = () => {
+      midiChannel = i;
+      $$('#channelOptions .setting-opt').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      updateLCD();
+    };
+    container.appendChild(btn);
+  }
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  $$('.tab-btn').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  $('#patchList').classList.toggle('hidden', tab !== 'patches');
+  $('#effectsPanel').classList.toggle('hidden', tab !== 'effects');
+  $('#settingsPanel').classList.toggle('hidden', tab !== 'settings');
+}
+
+// ── Init ──
+function init() {
+  buildBankBar();
+  buildPatchList();
+  buildEffectsPanel();
+  buildChannelSelector();
+  updateLCD();
+  initMIDI();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

@@ -1,0 +1,250 @@
+{
+  "id": "roland-juno-g",
+  "manufacturer": "Roland",
+  "model": "JUNO-G",
+  "identityResponse": {
+    "manufacturerId": "0x41",
+    "familyCode": "0x0f02",
+    "modelNumber": "0x0000"
+  },
+  "banks": [
+    {
+      "id": "PR-A",
+      "label": "PR-A",
+      "msb": 87,
+      "lsb": 0,
+      "patches": [
+        "Juno-G Grand", "Bright Grand", "Soft Grand", "Honky-Tonk",
+        "FM E.Piano 1", "FM E.Piano 2", "Wurly EP", "Clav AC",
+        "Vibraphone", "Marimba", "Church Organ", "Jazz Organ",
+        "Rock Organ", "Nylon Gtr", "Steel Gtr", "Jazz Guitar",
+        "Clean Gtr", "Mute Guitar", "Overdrive Gtr", "Dist Guitar",
+        "Acoustic Bs", "Fingered Bs", "Pick Bass", "Fretless Bs",
+        "Slap Bass", "Synth Bass 1", "Synth Bass 2", "Violin",
+        "Viola", "Cello", "Contrabass", "Tremolo Str",
+        "Pizzicato", "Harp", "Timpani", "Strings",
+        "Slow Strings", "Synth Str 1", "Synth Str 2", "Choir Aahs",
+        "Voice Oohs", "SynVox", "Orchestra Hit", "Trumpet",
+        "Trombone", "Tuba", "Muted Trumpet", "French Horn",
+        "Brass Section", "Synth Brass 1", "Synth Brass 2", "Soprano Sax",
+        "Alto Sax", "Tenor Sax", "Baritone Sax", "Oboe",
+        "English Horn", "Bassoon", "Clarinet", "Piccolo",
+        "Flute", "Recorder", "Pan Flute", "Bottle Blow",
+        "Shakuhachi", "Whistle", "Ocarina", "Square Lead",
+        "Saw Lead", "Calliope", "Chiff Lead", "Charang",
+        "Voice Lead", "Fifth Lead", "Bass & Lead", "New Age Pad",
+        "Warm Pad", "Polysynth", "Choir Pad", "Bowed Pad",
+        "Metallic", "Halo Pad", "Sweep Pad", "Rain",
+        "Soundtrack", "Crystal", "Atmosphere", "Brightness",
+        "Goblins", "Echoes", "Sci-Fi", "Sitar",
+        "Banjo", "Shamisen", "Koto", "Kalimba",
+        "Bag Pipe", "Fiddle", "Shanai", "Tinkle Bell",
+        "Agogo", "Steel Drums", "Woodblock", "Taiko Drum",
+        "Melodic Tom", "Synth Drum", "Reverse Cym", "Gtr Fret Noise",
+        "Breath Noise", "Seashore", "Bird Tweet", "Telephone",
+        "Helicopter", "Applause", "Gunshot", "JP8 Strings",
+        "Juno Rave", "Techno Saw", "SuperSaw Pad", "Trance Lead",
+        "D-50 Stack", "Fantasia", "Vintage Org", "Perc Organ",
+        "Rock Piano", "Hard EP", "Soft Pad", "Vox Pad",
+        "Analog Str", "Syn Choir", "Bright Saw", "Dark Pad"
+      ]
+    },
+    {
+      "id": "PR-B",
+      "label": "PR-B",
+      "msb": 87,
+      "lsb": 1,
+      "patches": [
+        "PLS VocoBassline", "PLS Next Step", "SBS JP8 Seq Bs", "BTS RetroSonic 1",
+        "PNO Stage Grand", "PNO Jazz Grand", "PNO Pop Piano", "PNO Rock Piano",
+        "EP Suitcase", "EP DX Roads", "EP Vintage Wurly", "EP Dyno Tine",
+        "ORG Full Drawbar", "ORG Perc Click", "ORG Gospel Spin", "ORG Rock Organ",
+        "GTR Nylon Solo", "GTR Steel Pick", "GTR Jazz Clean", "GTR Crunch Mute",
+        "GTR Power Stack", "GTR Dist Lead", "BAS Finger Funk", "BAS Pick Pop",
+        "BAS Fretless Vib", "BAS Synth Round", "BAS Sub Growl", "BAS Acid Line",
+        "STR Film Score", "STR Lush Pad", "STR Chamber", "STR Pizz Section",
+        "BRS Big Band", "BRS Trumpet Solo", "BRS French Horns", "BRS Synth Stab",
+        "SAX Alto Express", "SAX Tenor Smooth", "SAX Bari Honk", "WND Flute Solo",
+        "WND Oboe Lyric", "WND Clarinet", "WND Pan Pipes", "VOX Cathedral",
+        "VOX Synth Choir", "VOX Talk Box", "VOX Whisper", "LED Trance Saw",
+        "LED Hoover", "LED Sync Sweep", "LED Screamer", "PAD Warm Analog",
+        "PAD Glass Wash", "PAD Evolve", "PAD Dark Matter", "SFX Riser",
+        "SFX Downfall", "SFX Glitch", "SFX Texture", "KEY Clav Wah",
+        "KEY Harpsichord", "KEY Celesta", "KEY Music Box", "KIT Analog 808",
+        "KIT Acoustic", "KIT Electronic", "KIT Percussion", "SEQ Arp Trance",
+        "SEQ Gated Pad", "SEQ Pulse Drive", "SEQ Retro Step", "CMB Layer Grand",
+        "CMB EP & Strings", "CMB Organ & Brass", "CMB Synth Stack", "PLS Ambient",
+        "PLS Chillwave", "PLS Deep House", "PLS Future Bass", "BTS Drum & Bass",
+        "BTS Lo-Fi HipHop", "BTS Trap Kit", "BTS House Drive", "SBS Wobble",
+        "SBS Reese", "SBS FM Bass", "SBS Pluck Bass", "PAD Vapor Wash",
+        "PAD Ice Crystal", "PAD Solar Wind", "PAD Nebula", "LED Supersaw",
+        "LED Phase Dist", "LED Bit Crush", "LED Ring Mod", "STR Ensemble",
+        "STR Solo Violin", "STR Cello Song", "STR Harp Gliss", "BRS Muted Trp",
+        "BRS Trombone Sec", "BRS Synth Poly", "BRS Stab Minor", "ORG Cathedral",
+        "ORG Combo Jazz", "ORG Prog Rock", "ORG Transistor", "GTR 12-String",
+        "GTR Wah Funk", "GTR Ambient Swl", "GTR Metal Chug", "PNO Bright Pop",
+        "PNO Dark Ballad", "PNO Tack Piano", "PNO Detuned Felt", "EP Crystal Tine",
+        "EP Phase Roads", "EP Warm Pad EP", "EP Bellish", "KIT TR-808 Full",
+        "KIT CR-78 Retro", "KIT Breakbeat", "KIT World Perc", "SFX White Noise",
+        "SFX Vinyl Crackle", "SFX Tape Stop", "SFX Sci-Fi Sweep", "BTS Deep Tech"
+      ]
+    },
+    { "id": "PR-C", "label": "PR-C", "msb": 87, "lsb": 2, "patches": [] },
+    { "id": "PR-D", "label": "PR-D", "msb": 87, "lsb": 3, "patches": [] },
+    { "id": "PR-E", "label": "PR-E", "msb": 87, "lsb": 4, "patches": [] },
+    { "id": "PR-F", "label": "PR-F", "msb": 87, "lsb": 5, "patches": [] },
+    { "id": "PR-G", "label": "PR-G", "msb": 87, "lsb": 6, "patches": [] },
+    { "id": "PR-H", "label": "PR-H", "msb": 87, "lsb": 7, "patches": [] },
+    { "id": "USER", "label": "USER", "msb": 87, "lsb": 8, "patches": [] },
+    {
+      "id": "GM",
+      "label": "GM",
+      "msb": 121,
+      "lsb": 0,
+      "patches": []
+    }
+  ],
+  "effects": [
+    {
+      "id": "volume",
+      "label": "Volume",
+      "type": "cc",
+      "cc": 7,
+      "min": 0,
+      "max": 127,
+      "default": 100
+    },
+    {
+      "id": "reverb",
+      "label": "Reverb Send",
+      "type": "cc",
+      "cc": 91,
+      "min": 0,
+      "max": 127,
+      "default": 40
+    },
+    {
+      "id": "chorus",
+      "label": "Chorus Send",
+      "type": "cc",
+      "cc": 93,
+      "min": 0,
+      "max": 127,
+      "default": 30
+    },
+    {
+      "id": "cutoff",
+      "label": "Filter Cutoff",
+      "type": "cc",
+      "cc": 74,
+      "min": 0,
+      "max": 127,
+      "default": 127
+    },
+    {
+      "id": "resonance",
+      "label": "Filter Resonance",
+      "type": "cc",
+      "cc": 71,
+      "min": 0,
+      "max": 127,
+      "default": 20
+    },
+    {
+      "id": "expression",
+      "label": "Expression",
+      "type": "cc",
+      "cc": 11,
+      "min": 0,
+      "max": 127,
+      "default": 127
+    },
+    {
+      "id": "pan",
+      "label": "Pan",
+      "type": "cc",
+      "cc": 10,
+      "min": 0,
+      "max": 127,
+      "default": 64
+    },
+    {
+      "id": "attack",
+      "label": "Attack Time",
+      "type": "cc",
+      "cc": 73,
+      "min": 0,
+      "max": 127,
+      "default": 64
+    },
+    {
+      "id": "release",
+      "label": "Release Time",
+      "type": "cc",
+      "cc": 72,
+      "min": 0,
+      "max": 127,
+      "default": 64
+    }
+  ],
+  "controls": [
+    {
+      "id": "sustain",
+      "label": "Sustain",
+      "type": "cc-toggle",
+      "cc": 64,
+      "onValue": 127,
+      "offValue": 0
+    },
+    {
+      "id": "portamento",
+      "label": "Portamento",
+      "type": "cc-toggle",
+      "cc": 65,
+      "onValue": 127,
+      "offValue": 0
+    },
+    {
+      "id": "sostenuto",
+      "label": "Sostenuto",
+      "type": "cc-toggle",
+      "cc": 66,
+      "onValue": 127,
+      "offValue": 0
+    }
+  ],
+  "sysex": {
+    "identityRequest": [240, 126, 127, 6, 1, 247],
+    "parameterFormat": "roland-dt1",
+    "deviceId": 16,
+    "modelId": [0, 0, 0, 21],
+    "commands": {
+      "mfxType": {
+        "address": [16, 0, 4, 0],
+        "size": 2,
+        "description": "MFX effect type (see service notes for value list)"
+      },
+      "mfxParameter1": {
+        "address": [16, 0, 4, 3],
+        "size": 4,
+        "description": "MFX parameter 1 (meaning depends on MFX type)"
+      },
+      "mfxParameter2": {
+        "address": [16, 0, 4, 7],
+        "size": 4,
+        "description": "MFX parameter 2"
+      },
+      "chorusType": {
+        "address": [16, 0, 6, 0],
+        "size": 2,
+        "description": "Chorus effect type"
+      },
+      "reverbType": {
+        "address": [16, 0, 8, 0],
+        "size": 2,
+        "description": "Reverb effect type"
+      }
+    }
+  },
+  "notes": "Bank MSB/LSB values (87/0-8) are from community documentation and the Juno-G MIDI Implementation document. Empty patch arrays mean patch names have not been captured yet — the controller should display 'Patch 001' through 'Patch 128' as placeholders. The Juno-G is USB MIDI class-compliant and does not require drivers. Some third-party replacement LCD screens require firmware 2.0 or lower; firmware version can be checked via the Identity Request without a working display. The identityResponse familyCode and modelNumber values need verification against actual hardware — connect a Juno-G and run the Identity Request to confirm."
+}
