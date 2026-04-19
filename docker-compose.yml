@@ -1,0 +1,11 @@
+services:
+  keyfall:
+    build: .
+    image: keyfall:latest
+    container_name: keyfall
+    restart: unless-stopped
+    ports:
+      - "${KEYFALL_PORT:-8080}:8080"
+    # If you front this with a reverse proxy on the same Docker network
+    # (Traefik, Caddy, nginx-proxy-manager, etc.), drop the `ports:` block
+    # and add the proxy's network + labels here instead.

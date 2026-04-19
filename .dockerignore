@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.gitignore
+.vscode
+.idea
+*.md
+!README.md
+keyfall-piano.html
+juno-g-midi.html
+.env
+.env.local
