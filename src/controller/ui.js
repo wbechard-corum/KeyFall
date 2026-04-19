@@ -84,6 +84,8 @@ export function mountController(root) {
 
   const controller = createController();
   let activeTab = 'patches';
+  let lastRenderedBankKey = null;  // `${profileId}:${bankIndex}` — triggers patch-list rebuild
+  let lastRenderedBanksFor = null; // profile id for bank bar
 
   buildProfileSelect();
   buildChannelOptions();
@@ -131,9 +133,6 @@ export function mountController(root) {
       container.appendChild(btn);
     }
   }
-
-  let lastRenderedBankKey = null;  // `${profileId}:${bankIndex}` — triggers patch-list rebuild
-  let lastRenderedBanksFor = null; // profile id for bank bar
 
   function render(snap) {
     const { profile, bankIndex, patchIndex, channel, effectValues, controlStates, lastMessage, lastIdentity } = snap;
