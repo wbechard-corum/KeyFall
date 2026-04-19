@@ -1,4 +1,4 @@
-import { requestAccess, onStateChange, autoSelect, selectOutput, selectInput } from './midi/connection.js';
+import { requestAccess, onStateChange, autoSelect } from './midi/connection.js';
 import { mountTrainer } from './trainer/ui.js';
 import { mountController } from './controller/ui.js';
 import { getSettings, updateSettings } from './shared/settings.js';
@@ -32,6 +32,15 @@ function setupMIDIStatus() {
   const label = document.getElementById('globalMidiLabel');
 
   onStateChange((state) => {
+    // Devices may enumerate via a delayed `statechange` after access is granted.
+    // Re-run auto-select whenever ports appear and nothing is selected yet.
+    if (state.requested && !state.error
+        && !state.selectedOutputId && !state.selectedInputId
+        && (state.outputs.length > 0 || state.inputs.length > 0)) {
+      autoSelect({ preferManufacturer: 'Roland' });
+      return;
+    }
+
     const hasDevice = !!(state.selectedOutputId || state.selectedInputId);
     dot.classList.toggle('on', hasDevice);
 
@@ -55,12 +64,7 @@ function setupMIDIStatus() {
   const midiButton = nav.querySelector('.mode-midi');
   midiButton.addEventListener('click', async () => {
     await requestAccess({ sysex: true });
-    const settings = getSettings();
     autoSelect({ preferManufacturer: 'Roland' });
-    if (settings.selectedDeviceId) {
-      selectOutput(settings.selectedDeviceId);
-      selectInput(settings.selectedDeviceId);
-    }
   });
 }
 

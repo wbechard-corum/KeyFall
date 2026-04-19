@@ -2,6 +2,7 @@ import { createController } from './controller.js';
 import { renderEffects, renderControls } from './effects-ui.js';
 import { availableProfiles } from './profile-loader.js';
 import { onTx } from '../midi/output.js';
+import { onStateChange, getState, selectInput, selectOutput, requestAccess } from '../midi/connection.js';
 
 const TEMPLATE = `
   <div class="controller-root">
@@ -47,6 +48,14 @@ const TEMPLATE = `
 
     <div class="settings-panel hidden" data-role="settings-panel">
       <div class="setting-group">
+        <div class="setting-label">MIDI Output Device</div>
+        <div class="device-list" data-role="output-devices"></div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-label">MIDI Input Device</div>
+        <div class="device-list" data-role="input-devices"></div>
+      </div>
+      <div class="setting-group">
         <div class="setting-label">MIDI Channel</div>
         <div class="setting-options" data-role="channel-options"></div>
       </div>
@@ -86,6 +95,7 @@ export function mountController(root) {
   $('[data-action="identity"]').addEventListener('click', () => controller.sendIdentityRequest());
 
   const unsubscribe = controller.onChange(render);
+  const unsubscribeMIDI = onStateChange(() => render(controller.getSnapshot()));
   render(controller.getSnapshot());
 
   function switchTab(tab) {
@@ -146,6 +156,7 @@ export function mountController(root) {
     if (activeTab === 'patches') renderPatchList(patches, patchIndex);
     if (activeTab === 'effects') renderEffects($('[data-role="fx-sliders"]'), profile, effectValues, (id, v) => controller.setEffectValue(id, v));
     if (activeTab === 'controls') renderControls($('[data-role="controls-list"]'), profile, controlStates, (id) => controller.toggleControl(id));
+    if (activeTab === 'settings') renderDeviceLists();
 
     $$('[data-role="channel-options"] .setting-opt').forEach((btn, i) => {
       btn.classList.toggle('active', i === channel);
@@ -208,7 +219,54 @@ export function mountController(root) {
     }, 120);
   }
 
+  function renderDeviceLists() {
+    const midi = getState();
+    renderDeviceList($('[data-role="output-devices"]'), midi.outputs, midi.selectedOutputId, (id) => selectOutput(id), 'output');
+    renderDeviceList($('[data-role="input-devices"]'), midi.inputs, midi.selectedInputId, (id) => selectInput(id), 'input');
+  }
+
+  function renderDeviceList(container, devices, selectedId, onPick, kind) {
+    container.innerHTML = '';
+
+    const midi = getState();
+    if (!midi.supported) {
+      container.innerHTML = '<div class="no-devices">Web MIDI not supported. Open in Chrome or Edge.</div>';
+      return;
+    }
+    if (!midi.requested) {
+      const btn = document.createElement('button');
+      btn.className = 'identity-btn';
+      btn.textContent = 'GRANT MIDI ACCESS';
+      btn.addEventListener('click', () => requestAccess({ sysex: true }));
+      container.appendChild(btn);
+      return;
+    }
+    if (midi.error) {
+      container.innerHTML = `<div class="no-devices">MIDI access denied: ${midi.error}</div>`;
+      return;
+    }
+    if (devices.length === 0) {
+      container.innerHTML = `<div class="no-devices">No MIDI ${kind}s found. Connect your keyboard and reload.</div>`;
+      return;
+    }
+
+    devices.forEach(d => {
+      const isActive = d.id === selectedId;
+      const div = document.createElement('button');
+      div.className = 'device-item' + (isActive ? ' active' : '');
+      div.innerHTML = `
+        <div>
+          <div class="device-name">${d.name}</div>
+          <div class="device-id">${d.manufacturer || '—'} · ${d.id.slice(0, 12)}</div>
+        </div>
+        ${isActive ? '<span class="device-check">✓</span>' : ''}
+      `;
+      div.addEventListener('click', () => onPick(d.id));
+      container.appendChild(div);
+    });
+  }
+
   return {
-    destroy() { unsubscribe(); },
+    destroy() { unsubscribe(); unsubscribeMIDI(); },
   };
 }
