@@ -1,0 +1,12 @@
+{
+  "name": "KeyFall",
+  "short_name": "KeyFall",
+  "description": "Open-source piano trainer and universal MIDI keyboard controller.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c0c0f",
+  "theme_color": "#0c0c0f",
+  "icons": []
+}

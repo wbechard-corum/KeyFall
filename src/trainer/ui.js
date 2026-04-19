@@ -1,0 +1,281 @@
+import { createRenderer } from './renderer.js';
+import { createPlayback } from './playback.js';
+import { playNote, resume as resumeAudio } from './audio.js';
+import { parseMIDI } from '../midi/parser.js';
+import { onNote as onMIDINote } from '../midi/input.js';
+import { keyAtPoint } from '../shared/piano-keyboard.js';
+import { DEMOS } from './demos.js';
+
+const TEMPLATE = `
+  <div class="trainer-root">
+    <div class="controls">
+      <button class="ctrl-btn play" data-action="play">PLAY</button>
+      <button class="ctrl-btn" data-action="stop">STOP</button>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">SPD</span>
+        <select class="ctrl-select" data-action="speed">
+          <option value="0.25">0.25x</option>
+          <option value="0.5">0.5x</option>
+          <option value="0.75">0.75x</option>
+          <option value="1" selected>1x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+        </select>
+      </div>
+
+      <button class="ctrl-btn" data-action="wait">WAIT</button>
+
+      <span class="spacer"></span>
+
+      <div class="ctrl-label song-info" data-role="song-info">No song loaded</div>
+
+      <span class="spacer"></span>
+
+      <div class="track-toggle" data-action="track-r">
+        <span class="dot" style="background:var(--right-hand)"></span>R
+      </div>
+      <div class="track-toggle" data-action="track-l">
+        <span class="dot" style="background:var(--left-hand)"></span>L
+      </div>
+
+      <button class="ctrl-btn" data-action="open">OPEN</button>
+      <input type="file" class="file-input" data-role="file-input" accept=".mid,.midi">
+    </div>
+
+    <div class="progress-bar" data-action="seek">
+      <div class="progress-fill" data-role="progress-fill"></div>
+    </div>
+
+    <div class="canvas-wrap" data-role="canvas-wrap">
+      <canvas data-role="canvas"></canvas>
+      <div class="drop-overlay" data-role="drop-overlay">
+        <div class="drop-icon">♪</div>
+        <div class="drop-title">Load a MIDI file</div>
+        <div class="drop-subtitle">or try a built-in demo</div>
+        <div class="drop-actions">
+          <button class="drop-btn primary" data-action="open">Open MIDI File</button>
+        </div>
+        <div class="demo-list" data-role="demo-list"></div>
+      </div>
+    </div>
+  </div>
+`;
+
+export function mountTrainer(root) {
+  root.innerHTML = TEMPLATE;
+
+  const $ = (sel) => root.querySelector(sel);
+  const $$ = (sel) => root.querySelectorAll(sel);
+
+  const canvas = $('[data-role="canvas"]');
+  const canvasWrap = $('[data-role="canvas-wrap"]');
+  const renderer = createRenderer(canvas);
+
+  const pressedKeys = new Set();
+
+  const playback = createPlayback({
+    onTick: () => render(),
+    onEnded: () => setPlayButtonState(false),
+    onPlayStateChange: (playing) => setPlayButtonState(playing),
+    onWaitChange: () => render(),
+  });
+
+  playback.onNotePlay((note) => {
+    playNote(note.midi, note.endTime - note.startTime, note.velocity || 80);
+  });
+
+  function render() {
+    renderer.render({
+      song: playback.state.song,
+      currentTime: playback.state.currentTime,
+      pressedKeys,
+      trackMuted: playback.state.trackMuted,
+      isPlaying: playback.isPlaying(),
+    });
+    updateProgress();
+  }
+
+  function setPlayButtonState(playing) {
+    const btn = $('[data-action="play"]');
+    btn.classList.toggle('active', playing);
+    btn.textContent = playing ? 'PAUSE' : 'PLAY';
+  }
+
+  function updateProgress() {
+    const fill = $('[data-role="progress-fill"]');
+    const song = playback.state.song;
+    if (!song || song.duration === 0) { fill.style.width = '0%'; return; }
+    const pct = Math.min(100, (playback.state.currentTime / song.duration) * 100);
+    fill.style.width = pct + '%';
+  }
+
+  function onSongLoaded(song) {
+    playback.setSong(song);
+    const info = $('[data-role="song-info"]');
+    info.textContent = `${song.name} · ${song.notes.length} notes · ${formatTime(song.duration)}`;
+    $('[data-role="drop-overlay"]').classList.add('hidden');
+    resumeAudio();
+    render();
+  }
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function loadFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const song = parseMIDI(e.target.result);
+        song.name = file.name.replace(/\.(mid|midi)$/i, '');
+        onSongLoaded(song);
+      } catch (err) {
+        alert('Error parsing MIDI file: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function buildDemos() {
+    const list = $('[data-role="demo-list"]');
+    list.innerHTML = '';
+    for (const [id, demo] of Object.entries(DEMOS)) {
+      const btn = document.createElement('button');
+      btn.className = 'demo-item';
+      btn.innerHTML = `<span>${demo.label}</span><span class="difficulty">${demo.difficulty}</span>`;
+      btn.addEventListener('click', () => {
+        const song = demo.build();
+        onSongLoaded(song);
+      });
+      list.appendChild(btn);
+    }
+  }
+
+  function openFile() {
+    $('[data-role="file-input"]').click();
+  }
+
+  function setupControls() {
+    $('[data-action="play"]').addEventListener('click', () => {
+      if (!playback.state.song) return;
+      playback.isPlaying() ? playback.pause() : playback.play();
+    });
+    $('[data-action="stop"]').addEventListener('click', () => playback.stop());
+    $('[data-action="speed"]').addEventListener('change', (e) => playback.setSpeed(e.target.value));
+    $('[data-action="wait"]').addEventListener('click', (e) => {
+      const enabled = !e.currentTarget.classList.contains('active');
+      playback.setWaitMode(enabled);
+      e.currentTarget.classList.toggle('active', enabled);
+    });
+    $('[data-action="track-r"]').addEventListener('click', (e) => {
+      const muted = playback.toggleTrackMuted(0);
+      e.currentTarget.classList.toggle('muted', muted);
+      render();
+    });
+    $('[data-action="track-l"]').addEventListener('click', (e) => {
+      const muted = playback.toggleTrackMuted(1);
+      e.currentTarget.classList.toggle('muted', muted);
+      render();
+    });
+    $$('[data-action="open"]').forEach(el => el.addEventListener('click', openFile));
+    $('[data-role="file-input"]').addEventListener('change', (e) => loadFile(e.target.files[0]));
+
+    $('[data-action="seek"]').addEventListener('click', (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      playback.seekPct(pct);
+    });
+  }
+
+  function setupDragDrop() {
+    canvasWrap.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      $('[data-role="drop-overlay"]').classList.remove('hidden');
+    });
+    canvasWrap.addEventListener('dragleave', () => {
+      if (!playback.state.song) return;
+      $('[data-role="drop-overlay"]').classList.add('hidden');
+    });
+    canvasWrap.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file && (file.name.endsWith('.mid') || file.name.endsWith('.midi'))) loadFile(file);
+    });
+  }
+
+  function setupTouchPiano() {
+    canvas.addEventListener('pointerdown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const { H, pianoHeight, layout } = renderer.getState();
+      const note = keyAtPoint(layout, x, y, H - pianoHeight, pianoHeight);
+      if (note !== null) noteOn(note);
+    });
+    canvas.addEventListener('pointerup', () => {
+      for (const note of pressedKeys) noteOff(note);
+    });
+    canvas.addEventListener('pointercancel', () => {
+      for (const note of pressedKeys) noteOff(note);
+    });
+  }
+
+  function noteOn(midi) {
+    pressedKeys.add(midi);
+    playNote(midi, 0.5, 90);
+    playback.reportKeyPress(midi);
+    render();
+  }
+
+  function noteOff(midi) {
+    pressedKeys.delete(midi);
+    render();
+  }
+
+  const unsubscribeMIDI = onMIDINote(({ type, note }) => {
+    if (type === 'on') {
+      pressedKeys.add(note);
+      playback.reportKeyPress(note);
+    } else {
+      pressedKeys.delete(note);
+    }
+    render();
+  });
+
+  function handleResize() {
+    renderer.resize();
+    render();
+  }
+
+  function handleKeydown(e) {
+    if (root.offsetParent === null) return;
+    if (e.code === 'Space') { e.preventDefault(); playback.isPlaying() ? playback.pause() : playback.play(); }
+    else if (e.code === 'Escape') playback.stop();
+  }
+
+  renderer.resize();
+  buildDemos();
+  setupControls();
+  setupDragDrop();
+  setupTouchPiano();
+  render();
+
+  window.addEventListener('resize', handleResize);
+  document.addEventListener('keydown', handleKeydown);
+
+  const tickInterval = setInterval(() => { if (!playback.isPlaying()) render(); }, 100);
+
+  return {
+    render,
+    destroy() {
+      clearInterval(tickInterval);
+      unsubscribeMIDI();
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('keydown', handleKeydown);
+    },
+  };
+}

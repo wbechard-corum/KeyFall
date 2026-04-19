@@ -1,0 +1,131 @@
+const listeners = new Set();
+
+const state = {
+  supported: typeof navigator !== 'undefined' && !!navigator.requestMIDIAccess,
+  access: null,
+  requested: false,
+  sysexGranted: false,
+  inputs: [],
+  outputs: [],
+  selectedInputId: null,
+  selectedOutputId: null,
+  error: null,
+};
+
+function emit() {
+  const snapshot = getState();
+  for (const fn of listeners) {
+    try { fn(snapshot); } catch (e) { console.error('MIDI listener error:', e); }
+  }
+}
+
+function refreshPortLists() {
+  if (!state.access) {
+    state.inputs = [];
+    state.outputs = [];
+    return;
+  }
+  state.inputs = Array.from(state.access.inputs.values()).map(p => ({
+    id: p.id,
+    name: p.name || 'Unknown Input',
+    manufacturer: p.manufacturer || '',
+    port: p,
+  }));
+  state.outputs = Array.from(state.access.outputs.values()).map(p => ({
+    id: p.id,
+    name: p.name || 'Unknown Output',
+    manufacturer: p.manufacturer || '',
+    port: p,
+  }));
+}
+
+export function getState() {
+  return {
+    supported: state.supported,
+    requested: state.requested,
+    sysexGranted: state.sysexGranted,
+    error: state.error,
+    inputs: state.inputs.map(({ port, ...rest }) => rest),
+    outputs: state.outputs.map(({ port, ...rest }) => rest),
+    selectedInputId: state.selectedInputId,
+    selectedOutputId: state.selectedOutputId,
+  };
+}
+
+export function onStateChange(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export async function requestAccess({ sysex = true } = {}) {
+  if (!state.supported) {
+    state.error = 'Web MIDI is not supported in this browser. Use Chrome or Edge.';
+    emit();
+    return null;
+  }
+
+  if (state.access) return state.access;
+
+  state.requested = true;
+  try {
+    state.access = await navigator.requestMIDIAccess({ sysex });
+    state.sysexGranted = sysex;
+    state.access.onstatechange = () => {
+      refreshPortLists();
+      emit();
+    };
+    refreshPortLists();
+    state.error = null;
+    emit();
+    return state.access;
+  } catch (e) {
+    state.error = e?.message || 'MIDI access denied';
+    state.access = null;
+    state.sysexGranted = false;
+    emit();
+    return null;
+  }
+}
+
+export function selectInput(id) {
+  state.selectedInputId = id;
+  emit();
+  return getInputPort();
+}
+
+export function selectOutput(id) {
+  state.selectedOutputId = id;
+  emit();
+  return getOutputPort();
+}
+
+export function getInputPort() {
+  if (!state.selectedInputId) return null;
+  return state.inputs.find(p => p.id === state.selectedInputId)?.port ?? null;
+}
+
+export function getOutputPort() {
+  if (!state.selectedOutputId) return null;
+  return state.outputs.find(p => p.id === state.selectedOutputId)?.port ?? null;
+}
+
+export function autoSelect({ preferManufacturer } = {}) {
+  if (!state.access) return;
+
+  if (!state.selectedOutputId && state.outputs.length > 0) {
+    const preferred = preferManufacturer
+      ? state.outputs.find(o =>
+          (o.name || '').toLowerCase().includes(preferManufacturer.toLowerCase()) ||
+          (o.manufacturer || '').toLowerCase().includes(preferManufacturer.toLowerCase()))
+      : null;
+    selectOutput((preferred || state.outputs[0]).id);
+  }
+
+  if (!state.selectedInputId && state.inputs.length > 0) {
+    const output = state.outputs.find(p => p.id === state.selectedOutputId);
+    const matchingInput = output
+      ? state.inputs.find(i => i.name === output.name)
+      : null;
+    selectInput((matchingInput || state.inputs[0]).id);
+  }
+}
