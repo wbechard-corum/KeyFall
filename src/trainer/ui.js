@@ -267,12 +267,20 @@ export function mountTrainer(root) {
   window.addEventListener('resize', handleResize);
   document.addEventListener('keydown', handleKeydown);
 
+  // ResizeObserver catches layout shifts that `window.resize` misses: late font
+  // loads, container growth from flex siblings settling, DPR changes, etc.
+  // Without this the canvas height stays pinned to whatever it was on first
+  // paint — which on cold loads is often before the flex layout finishes.
+  const resizeObserver = new ResizeObserver(handleResize);
+  resizeObserver.observe(canvasWrap);
+
   const tickInterval = setInterval(() => { if (!playback.isPlaying()) render(); }, 100);
 
   return {
     render,
     destroy() {
       clearInterval(tickInterval);
+      resizeObserver.disconnect();
       unsubscribeMIDI();
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('keydown', handleKeydown);
