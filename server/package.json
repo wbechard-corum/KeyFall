@@ -1,0 +1,14 @@
+{
+  "name": "keyfall-relay",
+  "version": "0.1.0",
+  "description": "KeyFall pairing relay — small WebSocket server that forwards messages within ad-hoc rooms keyed by a short pair code.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -4,8 +4,23 @@ services:
     image: keyfall:latest
     container_name: keyfall
     restart: unless-stopped
+    depends_on:
+      - keyfall-relay
     ports:
       - "${KEYFALL_PORT:-8080}:8080"
     # If you front this with a reverse proxy on the same Docker network
     # (Traefik, Caddy, nginx-proxy-manager, etc.), drop the `ports:` block
-    # and add the proxy's network + labels here instead.
+    # and add the proxy's network + labels here instead. Nginx inside this
+    # container proxies /ws to the keyfall-relay service below so the
+    # outer proxy only needs to forward the single HTTPS hostname.
+
+  keyfall-relay:
+    build: ./server
+    image: keyfall-relay:latest
+    container_name: keyfall-relay
+    restart: unless-stopped
+    environment:
+      - PORT=3030
+    # No host port exposed: the relay is only reachable from the keyfall
+    # nginx service over the Docker network. If you need direct access for
+    # debugging, add a `ports:` block temporarily.

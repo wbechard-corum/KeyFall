@@ -21,6 +21,12 @@ export function createController() {
     lastMessage: 'READY',
   };
 
+  // Mirror role. 'solo' (default) owns MIDI. 'host' owns MIDI and broadcasts
+  // state snapshots to peers. 'client' sends intents to the host and never
+  // touches the physical MIDI port.
+  let mirrorRole = 'solo';
+  let intentSender = null;
+
   hydrateDefaultsFromProfile();
 
   const initial = getSetting('selectedProfileId');
@@ -72,35 +78,48 @@ export function createController() {
       controlStates: { ...state.controlStates },
       lastMessage: state.lastMessage,
       lastIdentity: state.lastIdentity,
+      mirrorRole,
     };
   }
 
   function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+
+  function asClient() { return mirrorRole === 'client'; }
 
   function setProfile(id) {
     state.profile = loadProfile(id);
     hydrateDefaultsFromProfile();
     updateSettings({ selectedProfileId: id });
     state.lastMessage = `PROFILE: ${state.profile.model}`;
+    if (asClient()) intentSender?.('setProfile', { id });
     emit();
   }
 
   function setBank(idx) {
     state.bankIndex = idx;
     state.patchIndex = 0;
-    sendSelectedPatch();
+    if (asClient()) {
+      intentSender?.('setBank', { bankIndex: idx });
+    } else {
+      sendSelectedPatch();
+    }
     emit();
   }
 
   function setPatch(idx) {
     state.patchIndex = idx;
-    sendSelectedPatch();
+    if (asClient()) {
+      intentSender?.('setPatch', { patchIndex: idx });
+    } else {
+      sendSelectedPatch();
+    }
     emit();
   }
 
   function setChannel(ch) {
     state.channel = ch & 0x0F;
     updateSettings({ midiChannel: state.channel });
+    if (asClient()) intentSender?.('setChannel', { channel: state.channel });
     emit();
   }
 
@@ -116,8 +135,12 @@ export function createController() {
     if (!fx) return;
     const v = Math.max(fx.min ?? 0, Math.min(fx.max ?? 127, value | 0));
     state.effectValues[id] = v;
-    sendCC(state.channel, fx.cc, v);
-    state.lastMessage = `CC${fx.cc}:${v}`;
+    if (asClient()) {
+      intentSender?.('setEffectValue', { id, value: v });
+    } else {
+      sendCC(state.channel, fx.cc, v);
+      state.lastMessage = `CC${fx.cc}:${v}`;
+    }
     emit();
   }
 
@@ -127,14 +150,22 @@ export function createController() {
     const next = !state.controlStates[id];
     state.controlStates[id] = next;
     const value = next ? (ctl.onValue ?? 127) : (ctl.offValue ?? 0);
-    sendCC(state.channel, ctl.cc, value);
-    state.lastMessage = `CC${ctl.cc}:${value}`;
+    if (asClient()) {
+      intentSender?.('toggleControl', { id });
+    } else {
+      sendCC(state.channel, ctl.cc, value);
+      state.lastMessage = `CC${ctl.cc}:${value}`;
+    }
     emit();
   }
 
   function sendIdentityRequest() {
-    sendSysEx(IDENTITY_REQUEST);
-    state.lastMessage = 'SYSEX: ID REQ';
+    if (asClient()) {
+      intentSender?.('sendIdentityRequest', {});
+    } else {
+      sendSysEx(IDENTITY_REQUEST);
+      state.lastMessage = 'SYSEX: ID REQ';
+    }
     emit();
   }
 
@@ -142,15 +173,73 @@ export function createController() {
     const sx = state.profile.sysex;
     if (!sx || !sx.commands || !sx.commands[commandId]) return;
     const cmd = sx.commands[commandId];
-    const bytes = buildSysEx(sx.parameterFormat, {
-      deviceId: sx.deviceId,
-      modelId: sx.modelId,
-      address: cmd.address,
-      data,
-    });
-    sendSysEx(bytes);
-    state.lastMessage = `SYSEX: ${commandId}`;
+    if (asClient()) {
+      intentSender?.('sendSysExCommand', { commandId, data });
+    } else {
+      const bytes = buildSysEx(sx.parameterFormat, {
+        deviceId: sx.deviceId,
+        modelId: sx.modelId,
+        address: cmd.address,
+        data,
+      });
+      sendSysEx(bytes);
+      state.lastMessage = `SYSEX: ${commandId}`;
+    }
     emit();
+  }
+
+  function setMirrorRole(role, sender = null) {
+    mirrorRole = role;
+    intentSender = sender;
+    emit();
+  }
+
+  // Applied on the CLIENT when a state snapshot arrives from the host.
+  // No MIDI is sent; no intent is re-emitted.
+  function applyRemoteSnapshot(snap) {
+    let changed = false;
+    if (snap.profile?.id && snap.profile.id !== state.profile.id) {
+      try {
+        state.profile = loadProfile(snap.profile.id);
+        hydrateDefaultsFromProfile();
+        changed = true;
+      } catch (e) {
+        console.warn('Unknown profile from host:', snap.profile.id, e);
+      }
+    }
+    if (typeof snap.bankIndex === 'number' && snap.bankIndex !== state.bankIndex) {
+      state.bankIndex = snap.bankIndex;
+      changed = true;
+    }
+    if (typeof snap.patchIndex === 'number' && snap.patchIndex !== state.patchIndex) {
+      state.patchIndex = snap.patchIndex;
+      changed = true;
+    }
+    if (typeof snap.channel === 'number' && snap.channel !== state.channel) {
+      state.channel = snap.channel;
+      changed = true;
+    }
+    if (snap.effectValues) { state.effectValues = { ...snap.effectValues }; changed = true; }
+    if (snap.controlStates) { state.controlStates = { ...snap.controlStates }; changed = true; }
+    if (typeof snap.lastMessage === 'string') state.lastMessage = snap.lastMessage;
+    if (changed) emit();
+  }
+
+  // Applied on the HOST when an intent arrives from a client. Routes through
+  // the normal setters so MIDI gets sent and subsequent state-sync broadcasts
+  // fire through the existing emit() path.
+  function applyRemoteIntent(action, payload = {}) {
+    switch (action) {
+      case 'setPatch':    return setPatch(payload.patchIndex ?? 0);
+      case 'setBank':     return setBank(payload.bankIndex ?? 0);
+      case 'setChannel':  return setChannel(payload.channel ?? 0);
+      case 'setProfile':  try { setProfile(payload.id); } catch (e) { console.warn(e); } return;
+      case 'setEffectValue': return setEffectValue(payload.id, payload.value);
+      case 'toggleControl':  return toggleControl(payload.id);
+      case 'sendIdentityRequest': return sendIdentityRequest();
+      case 'sendSysExCommand':    return sendSysExCommand(payload.commandId, payload.data || []);
+      default: console.warn('Unknown remote intent:', action, payload);
+    }
   }
 
   return {
@@ -164,5 +253,8 @@ export function createController() {
     toggleControl,
     sendIdentityRequest,
     sendSysExCommand,
+    setMirrorRole,
+    applyRemoteSnapshot,
+    applyRemoteIntent,
   };
 }

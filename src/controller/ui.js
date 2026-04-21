@@ -1,8 +1,10 @@
 import { createController } from './controller.js';
 import { mountEffects, mountControls } from './effects-ui.js';
 import { availableProfiles } from './profile-loader.js';
+import { attachControllerMirror } from './mirror.js';
 import { onTx } from '../midi/output.js';
 import { onStateChange, getState, selectInput, selectOutput, requestAccess } from '../midi/connection.js';
+import { session } from '../net/session.js';
 
 const TEMPLATE = `
   <div class="controller-root">
@@ -65,6 +67,30 @@ const TEMPLATE = `
         <div class="identity-result hidden" data-role="identity-result"></div>
       </div>
       <div class="setting-group">
+        <div class="setting-label">Mirror Session</div>
+        <div class="mirror-panel" data-role="mirror-panel">
+          <div class="mirror-status" data-role="mirror-status">Solo · MIDI stays on this device</div>
+          <div class="mirror-actions">
+            <button class="mirror-btn" data-action="mirror-host">START AS HOST</button>
+            <button class="mirror-btn" data-action="mirror-join">JOIN SESSION</button>
+            <button class="mirror-btn" data-action="mirror-leave" hidden>LEAVE</button>
+          </div>
+          <div class="mirror-code hidden" data-role="mirror-code">
+            <span class="mirror-code-label">Code</span>
+            <span class="mirror-code-value" data-role="mirror-code-value">——————</span>
+          </div>
+          <div class="mirror-join-row hidden" data-role="mirror-join-row">
+            <input type="tel" inputmode="numeric" maxlength="6" class="mirror-code-input" data-role="mirror-code-input" placeholder="Enter 6-digit code">
+            <button class="mirror-btn primary" data-action="mirror-connect">CONNECT</button>
+            <button class="mirror-btn" data-action="mirror-cancel-join">CANCEL</button>
+          </div>
+          <div class="mirror-help">
+            Start a session on the laptop with the keyboard, then join from a second device with the code.
+            MIDI stays on the host; client actions are relayed.
+          </div>
+        </div>
+      </div>
+      <div class="setting-group">
         <div class="setting-label">Profile Notes</div>
         <div class="profile-notes" data-role="profile-notes">—</div>
       </div>
@@ -96,9 +122,18 @@ export function mountController(root) {
   });
   $('[data-action="identity"]').addEventListener('click', () => controller.sendIdentityRequest());
 
+  setupMirrorUI();
+
   const unsubscribe = controller.onChange(render);
   const unsubscribeMIDI = onStateChange(() => render(controller.getSnapshot()));
+  const unsubscribeMirror = attachControllerMirror(controller, session);
+  const unsubscribeSessionStatus = session.on('status', renderMirror);
+  const unsubscribeSessionError = session.on('error', ({ message }) => {
+    const err = $('[data-role="mirror-status"]');
+    err.textContent = `Error: ${message}`;
+  });
   render(controller.getSnapshot());
+  renderMirror(session.getSnapshot());
 
   function switchTab(tab) {
     activeTab = tab;
@@ -131,6 +166,77 @@ export function mountController(root) {
       btn.textContent = String(i + 1);
       btn.addEventListener('click', () => controller.setChannel(i));
       container.appendChild(btn);
+    }
+  }
+
+  function setupMirrorUI() {
+    $('[data-action="mirror-host"]').addEventListener('click', () => session.startHost());
+    $('[data-action="mirror-leave"]').addEventListener('click', () => session.leave());
+    $('[data-action="mirror-join"]').addEventListener('click', () => {
+      $('[data-role="mirror-join-row"]').classList.remove('hidden');
+      $('[data-role="mirror-code-input"]').focus();
+    });
+    $('[data-action="mirror-cancel-join"]').addEventListener('click', () => {
+      $('[data-role="mirror-join-row"]').classList.add('hidden');
+      $('[data-role="mirror-code-input"]').value = '';
+    });
+    $('[data-action="mirror-connect"]').addEventListener('click', () => {
+      const code = $('[data-role="mirror-code-input"]').value.trim();
+      if (!/^\d{6}$/.test(code)) {
+        $('[data-role="mirror-status"]').textContent = 'Enter a 6-digit code.';
+        return;
+      }
+      session.joinAs(code);
+    });
+    $('[data-role="mirror-code-input"]').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $('[data-action="mirror-connect"]').click();
+    });
+  }
+
+  function renderMirror(s = session.getSnapshot()) {
+    const statusEl = $('[data-role="mirror-status"]');
+    const codeEl = $('[data-role="mirror-code"]');
+    const codeValue = $('[data-role="mirror-code-value"]');
+    const joinRow = $('[data-role="mirror-join-row"]');
+    const hostBtn = $('[data-action="mirror-host"]');
+    const joinBtn = $('[data-action="mirror-join"]');
+    const leaveBtn = $('[data-action="mirror-leave"]');
+
+    const connected = s.status === 'connected' || s.status === 'waiting-for-peer';
+
+    hostBtn.hidden = connected || s.status === 'connecting';
+    joinBtn.hidden = connected || s.status === 'connecting';
+    leaveBtn.hidden = !connected && s.status !== 'connecting';
+
+    if (s.role === 'host' && s.code) {
+      codeEl.classList.remove('hidden');
+      codeValue.textContent = s.code;
+      joinRow.classList.add('hidden');
+    } else {
+      codeEl.classList.add('hidden');
+    }
+
+    switch (s.status) {
+      case 'idle':
+        statusEl.textContent = 'Solo · MIDI stays on this device';
+        break;
+      case 'connecting':
+        statusEl.textContent = 'Connecting to relay…';
+        break;
+      case 'waiting-for-peer':
+        statusEl.textContent = 'Hosting · share the code with your second device';
+        break;
+      case 'connected':
+        statusEl.textContent = s.role === 'host'
+          ? `Hosting · ${s.peers - 1} peer${s.peers - 1 === 1 ? '' : 's'} connected`
+          : `Joined · mirroring host (code ${s.code})`;
+        break;
+      case 'disconnected':
+        statusEl.textContent = 'Disconnected · reconnecting…';
+        break;
+      case 'error':
+        statusEl.textContent = `Error: ${s.error || 'unknown'}`;
+        break;
     }
   }
 
@@ -351,6 +457,9 @@ export function mountController(root) {
       unsubscribe();
       unsubscribeMIDI();
       unsubscribeTx();
+      unsubscribeMirror();
+      unsubscribeSessionStatus();
+      unsubscribeSessionError();
       document.removeEventListener('keydown', handleControllerKeys);
     },
   };
