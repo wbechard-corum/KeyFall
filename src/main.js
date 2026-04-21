@@ -1,6 +1,7 @@
 import { requestAccess, onStateChange, autoSelect } from './midi/connection.js';
 import { mountTrainer } from './trainer/ui.js';
 import { mountController } from './controller/ui.js';
+import { mountMirrorClient } from './mirror-client/ui.js';
 import { getSettings, updateSettings } from './shared/settings.js';
 
 const views = {
@@ -78,7 +79,26 @@ async function registerServiceWorker() {
   }
 }
 
+function parseMirrorCode() {
+  const m = /^#mirror=(\d{6})$/.exec(location.hash);
+  return m ? m[1] : null;
+}
+
+function bootMirrorClient(code) {
+  const app = document.getElementById('app');
+  app.innerHTML = '<section class="mode-view" id="mirrorClientView"></section>';
+  const view = document.getElementById('mirrorClientView');
+  mountMirrorClient(view, code);
+  registerServiceWorker();
+}
+
 function boot() {
+  const code = parseMirrorCode();
+  if (code) {
+    bootMirrorClient(code);
+    return;
+  }
+
   setupModeSwitcher();
   setupMIDIStatus();
 

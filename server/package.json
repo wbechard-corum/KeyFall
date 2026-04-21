@@ -1,0 +1,13 @@
+{
+  "name": "keyfall-mirror",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "mirror-server.js",
+  "scripts": {
+    "start": "node mirror-server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
