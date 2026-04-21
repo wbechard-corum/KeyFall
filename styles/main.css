@@ -242,22 +242,38 @@ canvas { display: block; width: 100%; height: 100%; }
 .drop-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(12, 12, 15, 0.92);
+  background: rgba(12, 12, 15, 0.94);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding: 40px 20px 20px;
   z-index: 20;
   transition: opacity 0.3s;
+  overflow-y: auto;
 }
 
 .drop-overlay.hidden { opacity: 0; pointer-events: none; }
 
-.drop-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
-.drop-title { font-size: 22px; font-weight: 600; margin-bottom: 8px; }
-.drop-subtitle { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); margin-bottom: 24px; }
+.drop-close {
+  position: absolute;
+  top: 10px; right: 14px;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.drop-close:hover { background: var(--surface-2); color: var(--text); }
 
-.drop-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.drop-icon { font-size: 48px; margin-bottom: 8px; opacity: 0.5; }
+.drop-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+.drop-subtitle { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-dim); margin-bottom: 20px; }
+
+.drop-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-bottom: 24px; }
 
 .drop-btn {
   padding: 12px 24px;
@@ -273,12 +289,30 @@ canvas { display: block; width: 100%; height: 100%; }
 .drop-btn:active { background: var(--border); }
 .drop-btn.primary { border-color: var(--accent); color: var(--accent); }
 
+.drop-sections {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  width: min(640px, 100%);
+}
+
+@media (min-width: 720px) {
+  .drop-sections { grid-template-columns: 1fr 1fr; }
+}
+
+.drop-section-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
 .demo-list {
-  margin-top: 20px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: 280px;
 }
 
 .demo-item {
@@ -303,6 +337,81 @@ canvas { display: block; width: 100%; height: 100%; }
   color: var(--text-muted);
   letter-spacing: 1px;
 }
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.library-empty {
+  padding: 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}
+
+.library-item {
+  display: flex;
+  align-items: stretch;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.library-item:hover { border-color: var(--border-light); }
+
+.library-load {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.library-load:active { background: var(--border); }
+
+.library-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.library-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.library-delete {
+  width: 36px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.library-delete:hover { color: var(--red); background: rgba(229,115,115,0.08); }
 
 /* ──────────────────────────────────────── Controller ──────────────────────────────────────── */
 

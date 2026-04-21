@@ -5,6 +5,7 @@ import { parseMIDI } from '../midi/parser.js';
 import { onNote as onMIDINote } from '../midi/input.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
 import { DEMOS } from './demos.js';
+import { saveSong, listSongs, getSong, deleteSong, isSupported as dbSupported } from './songs-db.js';
 
 const TEMPLATE = `
   <div class="trainer-root">
@@ -39,6 +40,7 @@ const TEMPLATE = `
         <span class="dot" style="background:var(--left-hand)"></span>L
       </div>
 
+      <button class="ctrl-btn" data-action="library">LIBRARY</button>
       <button class="ctrl-btn" data-action="open">OPEN</button>
       <input type="file" class="file-input" data-role="file-input" accept=".mid,.midi">
     </div>
@@ -50,13 +52,25 @@ const TEMPLATE = `
     <div class="canvas-wrap" data-role="canvas-wrap">
       <canvas data-role="canvas"></canvas>
       <div class="drop-overlay" data-role="drop-overlay">
+        <button class="drop-close" data-action="close-overlay" title="Close">×</button>
         <div class="drop-icon">♪</div>
         <div class="drop-title">Load a MIDI file</div>
-        <div class="drop-subtitle">or try a built-in demo</div>
+        <div class="drop-subtitle">drop a .mid here, open one, or pick a demo</div>
         <div class="drop-actions">
           <button class="drop-btn primary" data-action="open">Open MIDI File</button>
         </div>
-        <div class="demo-list" data-role="demo-list"></div>
+        <div class="drop-sections">
+          <div class="drop-section">
+            <div class="drop-section-title">DEMOS</div>
+            <div class="demo-list" data-role="demo-list"></div>
+          </div>
+          <div class="drop-section">
+            <div class="drop-section-title">MY LIBRARY</div>
+            <div class="library-list" data-role="library-list">
+              <div class="library-empty">Loading…</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -128,16 +142,98 @@ export function mountTrainer(root) {
   function loadFile(file) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
+      const bytes = e.target.result;
       try {
-        const song = parseMIDI(e.target.result);
+        const song = parseMIDI(bytes);
         song.name = file.name.replace(/\.(mid|midi)$/i, '');
         onSongLoaded(song);
+        if (dbSupported()) {
+          try {
+            await saveSong({
+              name: song.name,
+              bytes,
+              notes: song.notes.length,
+              duration: song.duration,
+            });
+            buildLibrary();
+          } catch (dbErr) {
+            console.warn('Could not save song to library:', dbErr);
+          }
+        }
       } catch (err) {
         alert('Error parsing MIDI file: ' + err.message);
       }
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  async function loadFromLibrary(id) {
+    try {
+      const saved = await getSong(id);
+      if (!saved) return;
+      const song = parseMIDI(saved.bytes);
+      song.name = saved.name;
+      onSongLoaded(song);
+    } catch (err) {
+      alert('Error loading saved song: ' + err.message);
+    }
+  }
+
+  async function buildLibrary() {
+    const list = $('[data-role="library-list"]');
+    if (!dbSupported()) {
+      list.innerHTML = '<div class="library-empty">Saved library not available (IndexedDB missing).</div>';
+      return;
+    }
+    let songs = [];
+    try {
+      songs = await listSongs();
+    } catch (err) {
+      list.innerHTML = `<div class="library-empty">Library error: ${err.message}</div>`;
+      return;
+    }
+
+    if (songs.length === 0) {
+      list.innerHTML = '<div class="library-empty">No saved songs yet. Open a .mid file to add one.</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    for (const s of songs) {
+      const item = document.createElement('div');
+      item.className = 'library-item';
+      item.innerHTML = `
+        <button class="library-load" type="button">
+          <span class="library-name"></span>
+          <span class="library-meta"></span>
+        </button>
+        <button class="library-delete" type="button" title="Delete">✕</button>
+      `;
+      item.querySelector('.library-name').textContent = s.name;
+      item.querySelector('.library-meta').textContent = `${s.notes} notes · ${formatTime(s.duration)}`;
+      item.querySelector('.library-load').addEventListener('click', () => loadFromLibrary(s.id));
+      item.querySelector('.library-delete').addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        if (!confirm(`Delete "${s.name}" from your library?`)) return;
+        try {
+          await deleteSong(s.id);
+          buildLibrary();
+        } catch (err) {
+          alert('Could not delete: ' + err.message);
+        }
+      });
+      list.appendChild(item);
+    }
+  }
+
+  function showOverlay() {
+    $('[data-role="drop-overlay"]').classList.remove('hidden');
+    buildLibrary();
+  }
+
+  function hideOverlay() {
+    $('[data-role="drop-overlay"]').classList.add('hidden');
   }
 
   function buildDemos() {
@@ -182,7 +278,14 @@ export function mountTrainer(root) {
       render();
     });
     $$('[data-action="open"]').forEach(el => el.addEventListener('click', openFile));
-    $('[data-role="file-input"]').addEventListener('change', (e) => loadFile(e.target.files[0]));
+    $('[data-role="file-input"]').addEventListener('change', (e) => {
+      loadFile(e.target.files[0]);
+      e.target.value = '';
+    });
+    $('[data-action="library"]').addEventListener('click', showOverlay);
+    $('[data-action="close-overlay"]').addEventListener('click', () => {
+      if (playback.state.song) hideOverlay();
+    });
 
     $('[data-action="seek"]').addEventListener('click', (e) => {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -259,6 +362,7 @@ export function mountTrainer(root) {
 
   renderer.resize();
   buildDemos();
+  buildLibrary();
   setupControls();
   setupDragDrop();
   setupTouchPiano();

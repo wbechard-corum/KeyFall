@@ -218,10 +218,70 @@ export function mountController(root) {
       });
       lastRenderedBankKey = bankKey;
     }
+    let activeBtn = null;
     list.querySelectorAll('.patch-item').forEach((btn, i) => {
-      btn.classList.toggle('active', i === patchIndex);
+      const isActive = i === patchIndex;
+      btn.classList.toggle('active', isActive);
+      if (isActive) activeBtn = btn;
     });
+    // Scroll into view when the active patch changed via keyboard/identity reply
+    // rather than a direct click. Use `nearest` so we don't yank the user around.
+    if (activeBtn && activeBtn.dataset.seen !== 'true') {
+      activeBtn.scrollIntoView({ block: 'nearest' });
+    }
+    list.querySelectorAll('.patch-item').forEach(btn => { btn.dataset.seen = ''; });
+    if (activeBtn) activeBtn.dataset.seen = 'true';
   }
+
+  function handleControllerKeys(e) {
+    if (root.offsetParent === null) return;
+    const target = document.activeElement;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) {
+      return;
+    }
+
+    const snap = controller.getSnapshot();
+    const bank = snap.profile.banks[snap.bankIndex];
+    if (!bank) return;
+    const patchCount = bank.patches.length;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (snap.patchIndex < patchCount - 1) controller.setPatch(snap.patchIndex + 1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (snap.patchIndex > 0) controller.setPatch(snap.patchIndex - 1);
+        break;
+      case 'PageDown':
+        e.preventDefault();
+        controller.setPatch(Math.min(snap.patchIndex + 8, patchCount - 1));
+        break;
+      case 'PageUp':
+        e.preventDefault();
+        controller.setPatch(Math.max(snap.patchIndex - 8, 0));
+        break;
+      case 'Home':
+        e.preventDefault();
+        controller.setPatch(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        controller.setPatch(patchCount - 1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (snap.bankIndex < snap.profile.banks.length - 1) controller.setBank(snap.bankIndex + 1);
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (snap.bankIndex > 0) controller.setBank(snap.bankIndex - 1);
+        break;
+    }
+  }
+
+  document.addEventListener('keydown', handleControllerKeys);
 
   function formatPair(bytes) {
     return bytes.map(b => b.toString(16).padStart(2, '0')).join(' ');
@@ -287,6 +347,11 @@ export function mountController(root) {
   }
 
   return {
-    destroy() { unsubscribe(); unsubscribeMIDI(); unsubscribeTx(); },
+    destroy() {
+      unsubscribe();
+      unsubscribeMIDI();
+      unsubscribeTx();
+      document.removeEventListener('keydown', handleControllerKeys);
+    },
   };
 }
