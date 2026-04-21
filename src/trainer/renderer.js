@@ -19,7 +19,7 @@ function ensureRoundRect(ctx) {
   };
 }
 
-export function createRenderer(canvas) {
+export function createRenderer(canvas, { min, max } = {}) {
   const ctx = canvas.getContext('2d');
   ensureRoundRect(ctx);
   const state = {
@@ -29,6 +29,8 @@ export function createRenderer(canvas) {
     noteAreaHeight: 0,
     layout: null,
     fallTimeSeconds: 3,
+    rangeMin: min,
+    rangeMax: max,
   };
 
   function resize() {
@@ -44,7 +46,15 @@ export function createRenderer(canvas) {
 
     state.pianoHeight = Math.min(120, state.H * 0.18);
     state.noteAreaHeight = state.H - state.pianoHeight;
-    state.layout = computeKeyLayout(state.W);
+    state.layout = computeKeyLayout(state.W, state.rangeMin, state.rangeMax);
+  }
+
+  function setRange(newMin, newMax) {
+    state.rangeMin = newMin;
+    state.rangeMax = newMax;
+    if (state.W > 0) {
+      state.layout = computeKeyLayout(state.W, state.rangeMin, state.rangeMax);
+    }
   }
 
   function drawGrid() {
@@ -235,6 +245,7 @@ export function createRenderer(canvas) {
   return {
     resize,
     render,
+    setRange,
     getState: () => state,
   };
 }

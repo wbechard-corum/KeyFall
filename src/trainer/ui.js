@@ -4,6 +4,8 @@ import { playNote, resume as resumeAudio } from './audio.js';
 import { parseMIDI } from '../midi/parser.js';
 import { onNote as onMIDINote } from '../midi/input.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
+import { PIANO_RANGES, getRangeById } from '../shared/constants.js';
+import { getSetting, updateSettings } from '../shared/settings.js';
 import { DEMOS } from './demos.js';
 import { saveSong, listSongs, getSong, deleteSong, isSupported as dbSupported } from './songs-db.js';
 
@@ -26,6 +28,11 @@ const TEMPLATE = `
       </div>
 
       <button class="ctrl-btn" data-action="wait">WAIT</button>
+
+      <div class="ctrl-group">
+        <span class="ctrl-label">KEYS</span>
+        <select class="ctrl-select" data-action="range"></select>
+      </div>
 
       <span class="spacer"></span>
 
@@ -84,7 +91,9 @@ export function mountTrainer(root) {
 
   const canvas = $('[data-role="canvas"]');
   const canvasWrap = $('[data-role="canvas-wrap"]');
-  const renderer = createRenderer(canvas);
+
+  const initialRange = getRangeById(getSetting('pianoRangeId') || '88');
+  const renderer = createRenderer(canvas, { min: initialRange.min, max: initialRange.max });
 
   const pressedKeys = new Set();
 
@@ -255,6 +264,18 @@ export function mountTrainer(root) {
     $('[data-role="file-input"]').click();
   }
 
+  function buildRangeSelect() {
+    const sel = $('[data-action="range"]');
+    sel.innerHTML = '';
+    for (const r of PIANO_RANGES) {
+      const opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = r.label;
+      sel.appendChild(opt);
+    }
+    sel.value = initialRange.id;
+  }
+
   function setupControls() {
     $('[data-action="play"]').addEventListener('click', () => {
       if (!playback.state.song) return;
@@ -262,6 +283,12 @@ export function mountTrainer(root) {
     });
     $('[data-action="stop"]').addEventListener('click', () => playback.stop());
     $('[data-action="speed"]').addEventListener('change', (e) => playback.setSpeed(e.target.value));
+    $('[data-action="range"]').addEventListener('change', (e) => {
+      const range = getRangeById(e.target.value);
+      renderer.setRange(range.min, range.max);
+      updateSettings({ pianoRangeId: range.id });
+      render();
+    });
     $('[data-action="wait"]').addEventListener('click', (e) => {
       const enabled = !e.currentTarget.classList.contains('active');
       playback.setWaitMode(enabled);
@@ -363,6 +390,7 @@ export function mountTrainer(root) {
   renderer.resize();
   buildDemos();
   buildLibrary();
+  buildRangeSelect();
   setupControls();
   setupDragDrop();
   setupTouchPiano();
