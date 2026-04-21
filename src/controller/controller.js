@@ -107,8 +107,10 @@ export function createController() {
   function sendSelectedPatch() {
     const bank = state.profile.banks[state.bankIndex];
     if (!bank) return;
-    sendPatchChange(state.channel, bank.msb, bank.lsb, state.patchIndex);
-    state.lastMessage = `CC0:${bank.msb} CC32:${bank.lsb} PC:${state.patchIndex}`;
+    const patch = bank.patches[state.patchIndex];
+    if (!patch) return;
+    sendPatchChange(state.channel, patch.msb, patch.lsb, patch.pc);
+    state.lastMessage = `CC0:${patch.msb} CC32:${patch.lsb} PC:${patch.pc}`;
   }
 
   function setEffectValue(id, value) {

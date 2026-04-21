@@ -144,7 +144,7 @@ export function mountController(root) {
 
     const bank = profile.banks[bankIndex];
     const patches = bank?.patches || [];
-    const patchName = patches[patchIndex] || '—';
+    const patchName = patches[patchIndex]?.name || '—';
 
     $('[data-role="lcd-bank"]').textContent = bank?.label ?? '—';
     $('[data-role="lcd-patch-num"]').textContent = bank
@@ -203,12 +203,12 @@ export function mountController(root) {
     const bankKey = `${profile.id}:${bankIndex}`;
     if (lastRenderedBankKey !== bankKey) {
       list.innerHTML = '';
-      patches.forEach((name, i) => {
+      patches.forEach((patch, i) => {
         const btn = document.createElement('button');
         btn.className = 'patch-item';
         btn.innerHTML = `
           <span class="patch-num">${String(i + 1).padStart(3, '0')}</span>
-          <span class="patch-name">${name}</span>
+          <span class="patch-name">${patch.name}</span>
         `;
         btn.addEventListener('click', () => {
           controller.setPatch(i);

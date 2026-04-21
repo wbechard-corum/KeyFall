@@ -26,15 +26,20 @@ export function matchProfileFromIdentity(reply) {
 }
 
 function normalizeProfile(profile) {
-  const banks = (profile.banks || []).map(bank => ({
-    id: bank.id,
-    label: bank.label || bank.id,
-    msb: bank.msb ?? 0,
-    lsb: bank.lsb ?? 0,
-    patches: (bank.patches && bank.patches.length > 0)
+  const banks = (profile.banks || []).map(bank => {
+    const count = bank.patchCount ?? 128;
+    const rawPatches = bank.patches && bank.patches.length > 0
       ? bank.patches
-      : Array.from({ length: 128 }, (_, i) => `${bank.label || bank.id} Patch ${String(i + 1).padStart(3, '0')}`),
-  }));
+      : Array.from({ length: count }, (_, i) => `${bank.label || bank.id} Patch ${String(i + 1).padStart(3, '0')}`);
+    const patches = rawPatches.map((p, i) => normalizePatch(p, i, bank));
+    return {
+      id: bank.id,
+      label: bank.label || bank.id,
+      msb: bank.msb ?? 0,
+      lsb: bank.lsb ?? 0,
+      patches,
+    };
+  });
 
   return {
     id: profile.id,
@@ -46,5 +51,17 @@ function normalizeProfile(profile) {
     controls: profile.controls || [],
     sysex: profile.sysex || null,
     notes: profile.notes || '',
+  };
+}
+
+function normalizePatch(patch, index, bank) {
+  if (typeof patch === 'string') {
+    return { name: patch, msb: bank.msb ?? 0, lsb: bank.lsb ?? 0, pc: index & 0x7F };
+  }
+  return {
+    name: patch.name ?? `Patch ${index + 1}`,
+    msb: patch.msb ?? bank.msb ?? 0,
+    lsb: patch.lsb ?? bank.lsb ?? 0,
+    pc: (patch.pc ?? index) & 0x7F,
   };
 }
