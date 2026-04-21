@@ -3,6 +3,7 @@ import { mountEffects, mountControls } from './effects-ui.js';
 import { availableProfiles } from './profile-loader.js';
 import { onTx } from '../midi/output.js';
 import { onStateChange, getState, selectInput, selectOutput, requestAccess } from '../midi/connection.js';
+import { createMirrorHost } from '../shared/mirror.js';
 
 const TEMPLATE = `
   <div class="controller-root">
@@ -65,6 +66,21 @@ const TEMPLATE = `
         <div class="identity-result hidden" data-role="identity-result"></div>
       </div>
       <div class="setting-group">
+        <div class="setting-label">Mirror to iPad</div>
+        <div class="mirror-panel" data-role="mirror-panel">
+          <button class="identity-btn" data-action="mirror-toggle">START MIRRORING</button>
+          <div class="mirror-status hidden" data-role="mirror-status">
+            <div class="mirror-code" data-role="mirror-code">------</div>
+            <div class="mirror-help">
+              On your iPad, open this page and add
+              <code data-role="mirror-hash">#mirror=------</code>
+              to the URL.
+            </div>
+            <div class="mirror-peers" data-role="mirror-peers">0 connected</div>
+          </div>
+        </div>
+      </div>
+      <div class="setting-group">
         <div class="setting-label">Profile Notes</div>
         <div class="profile-notes" data-role="profile-notes">—</div>
       </div>
@@ -95,6 +111,68 @@ export function mountController(root) {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
   $('[data-action="identity"]').addEventListener('click', () => controller.sendIdentityRequest());
+  $('[data-action="mirror-toggle"]').addEventListener('click', toggleMirror);
+
+  let mirrorHost = null;
+  let mirrorStatus = null;
+  let unsubscribeMirrorPublish = null;
+
+  function toggleMirror() {
+    if (mirrorHost) {
+      stopMirror();
+    } else {
+      startMirror();
+    }
+  }
+
+  function startMirror() {
+    mirrorHost = createMirrorHost({
+      onStatus: (st) => { mirrorStatus = st; renderMirrorPanel(); },
+      onCommand: (cmd) => controller.handleMirrorCommand(cmd),
+    });
+    unsubscribeMirrorPublish = controller.onChange((snap) => {
+      mirrorHost?.publishState(buildMirrorState(snap));
+    });
+    // Publish initial snapshot so newly-joining clients see current state.
+    mirrorHost.publishState(buildMirrorState(controller.getSnapshot()));
+    $('[data-action="mirror-toggle"]').textContent = 'STOP MIRRORING';
+    $('[data-role="mirror-status"]').classList.remove('hidden');
+  }
+
+  function stopMirror() {
+    unsubscribeMirrorPublish?.();
+    unsubscribeMirrorPublish = null;
+    mirrorHost?.close();
+    mirrorHost = null;
+    mirrorStatus = null;
+    $('[data-action="mirror-toggle"]').textContent = 'START MIRRORING';
+    $('[data-role="mirror-status"]').classList.add('hidden');
+  }
+
+  function buildMirrorState(snap) {
+    return {
+      profileId: snap.profile.id,
+      bankIndex: snap.bankIndex,
+      patchIndex: snap.patchIndex,
+      channel: snap.channel,
+      effectValues: snap.effectValues,
+      controlStates: snap.controlStates,
+      lastMessage: snap.lastMessage,
+    };
+  }
+
+  function renderMirrorPanel() {
+    if (!mirrorStatus) return;
+    const codeEl = $('[data-role="mirror-code"]');
+    const hashEl = $('[data-role="mirror-hash"]');
+    const peersEl = $('[data-role="mirror-peers"]');
+    const code = mirrorStatus.code || '------';
+    codeEl.textContent = code;
+    hashEl.textContent = `#mirror=${code}`;
+    peersEl.textContent = mirrorStatus.state === 'disconnected'
+      ? 'Disconnected — retrying…'
+      : `${mirrorStatus.peers || 0} connected`;
+  }
 
   const unsubscribe = controller.onChange(render);
   const unsubscribeMIDI = onStateChange(() => render(controller.getSnapshot()));
@@ -287,6 +365,11 @@ export function mountController(root) {
   }
 
   return {
-    destroy() { unsubscribe(); unsubscribeMIDI(); unsubscribeTx(); },
+    destroy() {
+      unsubscribe();
+      unsubscribeMIDI();
+      unsubscribeTx();
+      stopMirror();
+    },
   };
 }

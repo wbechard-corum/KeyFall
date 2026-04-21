@@ -155,6 +155,20 @@ export function createController() {
     emit();
   }
 
+  function handleMirrorCommand(cmd) {
+    if (!cmd || typeof cmd.action !== 'string') return;
+    const { action, args = [] } = cmd;
+    switch (action) {
+      case 'setProfile':   return setProfile(...args);
+      case 'setBank':      return setBank(...args);
+      case 'setPatch':     return setPatch(...args);
+      case 'setChannel':   return setChannel(...args);
+      case 'setEffectValue': return setEffectValue(...args);
+      case 'toggleControl':  return toggleControl(...args);
+      case 'sendIdentityRequest': return sendIdentityRequest();
+    }
+  }
+
   return {
     onChange,
     getSnapshot,
@@ -166,5 +180,6 @@ export function createController() {
     toggleControl,
     sendIdentityRequest,
     sendSysExCommand,
+    handleMirrorCommand,
   };
 }
