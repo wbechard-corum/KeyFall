@@ -3,6 +3,7 @@ import { createPlayback } from './playback.js';
 import { playNote, resume as resumeAudio } from './audio.js';
 import { parseMIDI } from '../midi/parser.js';
 import { onNote as onMIDINote } from '../midi/input.js';
+import { sendNoteOn, sendNoteOff, sendCC } from '../midi/output.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
 import { PIANO_RANGES, getRangeById } from '../shared/constants.js';
 import { getSetting, updateSettings } from '../shared/settings.js';
@@ -28,6 +29,8 @@ const TEMPLATE = `
       </div>
 
       <button class="ctrl-btn" data-action="wait">WAIT</button>
+
+      <button class="ctrl-btn" data-action="midi-out" title="Send song to the connected keyboard's MIDI in">MIDI OUT</button>
 
       <div class="ctrl-group">
         <span class="ctrl-label">KEYS</span>
@@ -107,6 +110,35 @@ export function mountTrainer(root) {
   playback.onNotePlay((note) => {
     playNote(note.midi, note.endTime - note.startTime, note.velocity || 80);
   });
+
+  // MIDI-OUT routing: send the song to the connected keyboard so it plays on
+  // the currently-selected patch. Channel taken from shared settings
+  // (the controller writes it via the SETTINGS tab).
+  let midiOutEnabled = !!getSetting('trainerMidiOut');
+  const activeOutNotes = new Set();
+
+  function midiOutChannel() {
+    return (getSetting('midiChannel') ?? 0) & 0x0F;
+  }
+
+  const unsubOutOn = playback.onNotePlay((note) => {
+    if (!midiOutEnabled) return;
+    sendNoteOn(midiOutChannel(), note.midi, note.velocity || 80);
+    activeOutNotes.add(note.midi);
+  });
+  const unsubOutOff = playback.onNoteOff((note) => {
+    if (!midiOutEnabled) return;
+    sendNoteOff(midiOutChannel(), note.midi);
+    activeOutNotes.delete(note.midi);
+  });
+
+  function allNotesOff() {
+    const ch = midiOutChannel();
+    for (const n of activeOutNotes) sendNoteOff(ch, n);
+    activeOutNotes.clear();
+    // Insurance: also send CC 123 (All Notes Off) on the channel.
+    sendCC(ch, 123, 0);
+  }
 
   function render() {
     renderer.render({
@@ -294,6 +326,14 @@ export function mountTrainer(root) {
       playback.setWaitMode(enabled);
       e.currentTarget.classList.toggle('active', enabled);
     });
+    const midiOutBtn = $('[data-action="midi-out"]');
+    midiOutBtn.classList.toggle('active', midiOutEnabled);
+    midiOutBtn.addEventListener('click', () => {
+      midiOutEnabled = !midiOutEnabled;
+      midiOutBtn.classList.toggle('active', midiOutEnabled);
+      updateSettings({ trainerMidiOut: midiOutEnabled });
+      if (!midiOutEnabled) allNotesOff();
+    });
     $('[data-action="track-r"]').addEventListener('click', (e) => {
       const muted = playback.toggleTrackMuted(0);
       e.currentTarget.classList.toggle('muted', muted);
@@ -414,6 +454,9 @@ export function mountTrainer(root) {
       clearInterval(tickInterval);
       resizeObserver.disconnect();
       unsubscribeMIDI();
+      unsubOutOn();
+      unsubOutOff();
+      allNotesOff();
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('keydown', handleKeydown);
     },

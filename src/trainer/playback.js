@@ -11,11 +11,20 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     animFrameId: null,
   };
 
+  function resetNoteFlags(song) {
+    if (!song) return;
+    for (const n of song.notes) {
+      n.played = false;
+      n.hit = false;
+      n.offEmitted = false;
+    }
+  }
+
   function setSong(song) {
     state.song = song;
     state.currentTime = 0;
     state.waitingForNote = null;
-    if (song) song.notes.forEach(n => { n.played = false; n.hit = false; });
+    resetNoteFlags(song);
   }
 
   function setSpeed(v) { state.playSpeed = Number(v) || 1; }
@@ -55,20 +64,34 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
 
   function stop() {
     pause();
+    flushOutstanding();
     state.currentTime = 0;
     state.waitingForNote = null;
-    if (state.song) state.song.notes.forEach(n => { n.played = false; n.hit = false; });
+    resetNoteFlags(state.song);
     onWaitChange?.(null);
     onTick?.({ currentTime: 0, song: state.song });
   }
 
   function seek(seconds) {
     if (!state.song) return;
+    flushOutstanding();
     state.currentTime = Math.max(0, Math.min(state.song.duration, seconds));
-    state.song.notes.forEach(n => { n.played = false; n.hit = false; });
+    resetNoteFlags(state.song);
     state.waitingForNote = null;
     onWaitChange?.(null);
     onTick?.({ currentTime: state.currentTime, song: state.song });
+  }
+
+  // Send note-offs for every note currently believed to be sounding, so that
+  // consumers (audio, MIDI out) don't leave hanging notes after a stop/seek.
+  function flushOutstanding() {
+    if (!state.song) return;
+    for (const note of state.song.notes) {
+      if (note.played && !note.offEmitted) {
+        note.offEmitted = true;
+        noteOffListeners.forEach(fn => fn(note));
+      }
+    }
   }
 
   function seekPct(pct) {
@@ -91,6 +114,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     state.currentTime += dt * state.playSpeed;
 
     emitDueNotes();
+    emitDueNoteOffs();
 
     if (state.waitMode) checkWait();
 
@@ -113,7 +137,21 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
         note.played = true;
         if (!state.trackMuted[note.track || 0]) {
           notePlayListeners.forEach(fn => fn(note));
+        } else {
+          // Skip emit but mark as played+off so the pair stays balanced.
+          note.offEmitted = true;
         }
+      }
+    }
+  }
+
+  function emitDueNoteOffs() {
+    if (!state.song) return;
+    for (const note of state.song.notes) {
+      if (!note.played || note.offEmitted) continue;
+      if (note.endTime <= state.currentTime) {
+        note.offEmitted = true;
+        noteOffListeners.forEach(fn => fn(note));
       }
     }
   }
@@ -139,9 +177,19 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
   }
 
   const notePlayListeners = new Set();
+  const noteOffListeners = new Set();
   function onNotePlay(fn) {
     notePlayListeners.add(fn);
     return () => notePlayListeners.delete(fn);
+  }
+  function onNoteOff(fn) {
+    noteOffListeners.add(fn);
+    return () => noteOffListeners.delete(fn);
+  }
+
+  function pauseWithFlush() {
+    pause();
+    flushOutstanding();
   }
 
   return {
@@ -152,12 +200,14 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     toggleTrackMuted,
     isTrackMuted,
     play,
-    pause,
+    pause: pauseWithFlush,
     stop,
     seek,
     seekPct,
     reportKeyPress,
     onNotePlay,
+    onNoteOff,
+    flushOutstanding,
     isPlaying: () => state.isPlaying,
     getCurrentTime: () => state.currentTime,
     getWaitingForNote: () => state.waitingForNote,
