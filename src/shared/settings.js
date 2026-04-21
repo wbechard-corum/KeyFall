@@ -6,6 +6,7 @@ const DEFAULTS = {
   selectedDeviceId: null,
   selectedProfileId: null,
   theme: 'dark',
+  trainerMidiOut: false,
 };
 
 function read() {

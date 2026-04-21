@@ -3,7 +3,9 @@ import { createPlayback } from './playback.js';
 import { playNote, resume as resumeAudio } from './audio.js';
 import { parseMIDI } from '../midi/parser.js';
 import { onNote as onMIDINote } from '../midi/input.js';
+import { sendNoteOn, sendNoteOff } from '../midi/output.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
+import { getSetting, updateSettings } from '../shared/settings.js';
 import { DEMOS } from './demos.js';
 import { saveSong, listSongs, getSong, deleteSong } from './library.js';
 
@@ -26,6 +28,7 @@ const TEMPLATE = `
       </div>
 
       <button class="ctrl-btn" data-action="wait">WAIT</button>
+      <button class="ctrl-btn" data-action="midi-out" title="Send notes to connected MIDI keyboard">MIDI OUT</button>
 
       <span class="spacer"></span>
 
@@ -89,13 +92,46 @@ export function mountTrainer(root) {
   const playback = createPlayback({
     onTick: () => render(),
     onEnded: () => setPlayButtonState(false),
-    onPlayStateChange: (playing) => setPlayButtonState(playing),
+    onPlayStateChange: (playing) => {
+      setPlayButtonState(playing);
+      if (!playing) panicAllOutNotes();
+    },
     onWaitChange: () => render(),
   });
 
   playback.onNotePlay((note) => {
     playNote(note.midi, note.endTime - note.startTime, note.velocity || 80);
+    if (midiOutEnabled) sendNoteToKeyboard(note);
   });
+
+  let midiOutEnabled = !!getSetting('trainerMidiOut');
+  const activeOutNotes = new Set();
+
+  function sendNoteToKeyboard(note) {
+    const channel = getSetting('midiChannel') ?? 0;
+    const velocity = note.velocity || 80;
+    const dur = Math.max(0.02, note.endTime - note.startTime);
+    sendNoteOn(channel, note.midi, velocity);
+    activeOutNotes.add(note.midi);
+    setTimeout(() => {
+      sendNoteOff(channel, note.midi);
+      activeOutNotes.delete(note.midi);
+    }, dur * 1000);
+  }
+
+  function panicAllOutNotes() {
+    const channel = getSetting('midiChannel') ?? 0;
+    for (const n of activeOutNotes) sendNoteOff(channel, n);
+    activeOutNotes.clear();
+  }
+
+  function setMidiOutEnabled(on) {
+    midiOutEnabled = !!on;
+    updateSettings({ trainerMidiOut: midiOutEnabled });
+    const btn = $('[data-action="midi-out"]');
+    btn.classList.toggle('active', midiOutEnabled);
+    if (!midiOutEnabled) panicAllOutNotes();
+  }
 
   function render() {
     renderer.render({
@@ -249,6 +285,10 @@ export function mountTrainer(root) {
       playback.setWaitMode(enabled);
       e.currentTarget.classList.toggle('active', enabled);
     });
+    $('[data-action="midi-out"]').addEventListener('click', (e) => {
+      setMidiOutEnabled(!e.currentTarget.classList.contains('active'));
+    });
+    if (midiOutEnabled) $('[data-action="midi-out"]').classList.add('active');
     $('[data-action="track-r"]').addEventListener('click', (e) => {
       const muted = playback.toggleTrackMuted(0);
       e.currentTarget.classList.toggle('muted', muted);
