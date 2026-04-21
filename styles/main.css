@@ -304,6 +304,102 @@ canvas { display: block; width: 100%; height: 100%; }
   letter-spacing: 1px;
 }
 
+.library-columns {
+  margin-top: 20px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-height: 50vh;
+}
+
+.library-col {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  min-width: 0;
+}
+
+.library-col-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 40vh;
+}
+
+.library-empty {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.library-item {
+  display: flex;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.library-item-load {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-item-load:active { background: var(--border); }
+
+.library-item-del {
+  padding: 0 12px;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.library-item-del:hover { color: var(--red); }
+
+.drop-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.drop-close:hover { color: var(--text); }
+
 /* ──────────────────────────────────────── Controller ──────────────────────────────────────── */
 
 .controller-root {
