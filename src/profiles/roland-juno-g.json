@@ -12,7 +12,7 @@
       "id": "PR-A",
       "label": "PR-A",
       "msb": 87,
-      "lsb": 0,
+      "lsb": 64,
       "patches": [
         "Juno-G Grand", "Bright Grand", "Soft Grand", "Honky-Tonk",
         "FM E.Piano 1", "FM E.Piano 2", "Wurly EP", "Clav AC",
@@ -53,7 +53,7 @@
       "id": "PR-B",
       "label": "PR-B",
       "msb": 87,
-      "lsb": 1,
+      "lsb": 65,
       "patches": [
         "PLS VocoBassline", "PLS Next Step", "SBS JP8 Seq Bs", "BTS RetroSonic 1",
         "PNO Stage Grand", "PNO Jazz Grand", "PNO Pop Piano", "PNO Rock Piano",
@@ -89,13 +89,11 @@
         "SFX Vinyl Crackle", "SFX Tape Stop", "SFX Sci-Fi Sweep", "BTS Deep Tech"
       ]
     },
-    { "id": "PR-C", "label": "PR-C", "msb": 87, "lsb": 2, "patches": [] },
-    { "id": "PR-D", "label": "PR-D", "msb": 87, "lsb": 3, "patches": [] },
-    { "id": "PR-E", "label": "PR-E", "msb": 87, "lsb": 4, "patches": [] },
-    { "id": "PR-F", "label": "PR-F", "msb": 87, "lsb": 5, "patches": [] },
-    { "id": "PR-G", "label": "PR-G", "msb": 87, "lsb": 6, "patches": [] },
-    { "id": "PR-H", "label": "PR-H", "msb": 87, "lsb": 7, "patches": [] },
-    { "id": "USER", "label": "USER", "msb": 87, "lsb": 8, "patches": [] },
+    { "id": "PR-C", "label": "PR-C", "msb": 87, "lsb": 66, "patches": [] },
+    { "id": "PR-D", "label": "PR-D", "msb": 87, "lsb": 67, "patches": [] },
+    { "id": "PR-E", "label": "PR-E", "msb": 87, "lsb": 68, "patches": [] },
+    { "id": "PR-F", "label": "PR-F", "msb": 87, "lsb": 69, "patches": [] },
+    { "id": "USER", "label": "USER", "msb": 87, "lsb": 0, "patchCount": 256, "patches": [] },
     {
       "id": "GM",
       "label": "GM",
