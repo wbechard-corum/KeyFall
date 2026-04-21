@@ -6,6 +6,17 @@ services:
     restart: unless-stopped
     ports:
       - "${KEYFALL_PORT:-8080}:8080"
+    depends_on:
+      - mirror
     # If you front this with a reverse proxy on the same Docker network
     # (Traefik, Caddy, nginx-proxy-manager, etc.), drop the `ports:` block
     # and add the proxy's network + labels here instead.
+
+  mirror:
+    build:
+      context: ./server
+    image: keyfall-mirror:latest
+    container_name: keyfall-mirror
+    restart: unless-stopped
+    # No external port by default — nginx proxies /mirror/ws over the
+    # same origin. Expose 8081 yourself if you run the relay standalone.
