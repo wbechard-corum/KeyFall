@@ -6,11 +6,12 @@ services:
     restart: unless-stopped
     ports:
       - "${KEYFALL_PORT:-8080}:8080"
-    depends_on:
-      - mirror
     # If you front this with a reverse proxy on the same Docker network
     # (Traefik, Caddy, nginx-proxy-manager, etc.), drop the `ports:` block
     # and add the proxy's network + labels here instead.
+    # The pair-mirror relay (`mirror` service below) is optional — the
+    # main app runs fine without it, and nginx serves 502 on /mirror/ws
+    # when the relay isn't running.
 
   mirror:
     build:
