@@ -7,7 +7,7 @@ import { sendNoteOn, sendNoteOff } from '../midi/output.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
 import { getSetting, updateSettings } from '../shared/settings.js';
 import { DEMOS } from './demos.js';
-import { saveSong, listSongs, getSong, deleteSong } from './library.js';
+import { saveSong } from './library.js';
 
 const TEMPLATE = `
   <div class="trainer-root">
@@ -43,7 +43,6 @@ const TEMPLATE = `
         <span class="dot" style="background:var(--left-hand)"></span>L
       </div>
 
-      <button class="ctrl-btn" data-action="library">LIBRARY</button>
       <button class="ctrl-btn" data-action="open">OPEN</button>
       <input type="file" class="file-input" data-role="file-input" accept=".mid,.midi">
     </div>
@@ -55,23 +54,13 @@ const TEMPLATE = `
     <div class="canvas-wrap" data-role="canvas-wrap">
       <canvas data-role="canvas"></canvas>
       <div class="drop-overlay" data-role="drop-overlay">
-        <button class="drop-close" data-action="close-library" aria-label="Close">×</button>
         <div class="drop-icon">♪</div>
         <div class="drop-title">Load a song</div>
-        <div class="drop-subtitle">Drop a .mid file anywhere to add it to your library</div>
+        <div class="drop-subtitle">Drop a .mid file here, open one, pick a demo, or visit the Songs tab</div>
         <div class="drop-actions">
           <button class="drop-btn primary" data-action="open">Open MIDI File</button>
         </div>
-        <div class="library-columns">
-          <div class="library-col">
-            <div class="library-col-title">My Library</div>
-            <div class="library-list" data-role="library-list"></div>
-          </div>
-          <div class="library-col">
-            <div class="library-col-title">Demos</div>
-            <div class="demo-list" data-role="demo-list"></div>
-          </div>
-        </div>
+        <div class="demo-list" data-role="demo-list"></div>
       </div>
     </div>
   </div>
@@ -189,7 +178,6 @@ export function mountTrainer(root) {
       }
       try {
         await saveSong({ name: displayName, bytes });
-        refreshLibrary();
       } catch (err) {
         console.warn('Failed to save to library:', err);
       }
@@ -197,61 +185,14 @@ export function mountTrainer(root) {
     reader.readAsArrayBuffer(file);
   }
 
-  async function loadFromLibrary(id) {
-    const record = await getSong(id);
-    if (!record) return;
+  function loadSongBytes(name, bytes) {
     try {
-      const song = parseMIDI(record.bytes);
-      song.name = record.name;
+      const song = parseMIDI(bytes);
+      song.name = name;
       onSongLoaded(song);
     } catch (err) {
-      alert('Error reading saved song: ' + err.message);
+      alert('Error loading song: ' + err.message);
     }
-  }
-
-  async function removeFromLibrary(id, name) {
-    if (!confirm(`Delete "${name}" from your library?`)) return;
-    await deleteSong(id);
-    refreshLibrary();
-  }
-
-  async function refreshLibrary() {
-    const list = $('[data-role="library-list"]');
-    const rows = await listSongs().catch(() => []);
-    list.innerHTML = '';
-    if (rows.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'library-empty';
-      empty.textContent = 'No saved songs yet.';
-      list.appendChild(empty);
-      return;
-    }
-    for (const row of rows) {
-      const item = document.createElement('div');
-      item.className = 'library-item';
-      const load = document.createElement('button');
-      load.className = 'library-item-load';
-      load.textContent = row.name;
-      load.addEventListener('click', () => loadFromLibrary(row.id));
-      const del = document.createElement('button');
-      del.className = 'library-item-del';
-      del.setAttribute('aria-label', `Delete ${row.name}`);
-      del.textContent = '×';
-      del.addEventListener('click', (e) => { e.stopPropagation(); removeFromLibrary(row.id, row.name); });
-      item.appendChild(load);
-      item.appendChild(del);
-      list.appendChild(item);
-    }
-  }
-
-  function showLibrary() {
-    $('[data-role="drop-overlay"]').classList.remove('hidden');
-    refreshLibrary();
-  }
-
-  function hideLibrary() {
-    if (!playback.state.song) return;
-    $('[data-role="drop-overlay"]').classList.add('hidden');
   }
 
   function buildDemos() {
@@ -301,8 +242,6 @@ export function mountTrainer(root) {
     });
     $$('[data-action="open"]').forEach(el => el.addEventListener('click', openFile));
     $('[data-role="file-input"]').addEventListener('change', (e) => loadFile(e.target.files[0]));
-    $('[data-action="library"]').addEventListener('click', showLibrary);
-    $('[data-action="close-library"]').addEventListener('click', hideLibrary);
 
     $('[data-action="seek"]').addEventListener('click', (e) => {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -382,7 +321,6 @@ export function mountTrainer(root) {
   setupControls();
   setupDragDrop();
   setupTouchPiano();
-  refreshLibrary();
   render();
 
   window.addEventListener('resize', handleResize);
@@ -399,6 +337,7 @@ export function mountTrainer(root) {
 
   return {
     render,
+    loadSongBytes,
     destroy() {
       clearInterval(tickInterval);
       resizeObserver.disconnect();

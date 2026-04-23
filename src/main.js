@@ -1,18 +1,44 @@
 import { requestAccess, onStateChange, autoSelect } from './midi/connection.js';
 import { mountTrainer } from './trainer/ui.js';
 import { mountController } from './controller/ui.js';
+import { mountSongs } from './songs/ui.js';
 import { mountMirrorClient } from './mirror-client/ui.js';
 import { getSettings, updateSettings } from './shared/settings.js';
 
 const views = {
-  trainer: { el: document.getElementById('trainerView'), mount: mountTrainer, handle: null },
-  controller: { el: document.getElementById('controllerView'), mount: mountController, handle: null },
+  trainer: {
+    el: document.getElementById('trainerView'),
+    mount: (el) => mountTrainer(el),
+    handle: null,
+  },
+  songs: {
+    el: document.getElementById('songsView'),
+    mount: (el) => mountSongs(el, {
+      onLoadSong: ({ name, bytes }) => {
+        ensureMounted('trainer');
+        views.trainer.handle?.loadSongBytes?.(name, bytes);
+        setMode('trainer');
+      },
+    }),
+    handle: null,
+  },
+  controller: {
+    el: document.getElementById('controllerView'),
+    mount: (el) => mountController(el),
+    handle: null,
+  },
 };
+
+function ensureMounted(mode) {
+  const v = views[mode];
+  if (v && !v.handle) v.handle = v.mount(v.el);
+}
 
 function setMode(mode) {
   for (const [key, v] of Object.entries(views)) {
     v.el.classList.toggle('hidden', key !== mode);
-    if (key === mode && !v.handle) v.handle = v.mount(v.el);
+    if (key === mode) ensureMounted(key);
+    if (key === mode && v.handle?.refresh) v.handle.refresh();
   }
   document.querySelectorAll('.mode-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
