@@ -725,6 +725,106 @@ canvas { display: block; width: 100%; height: 100%; }
   font-weight: 600;
 }
 
+.mirror-client-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+.mirror-client-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px 8px;
+}
+
+.mc-tab {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+}
+
+.mc-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+
+.mc-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 8px; }
+
+.mc-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.mc-effect {
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.mc-effect-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.mc-effect-value {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--accent);
+}
+
+.mc-effect-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.mc-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.mc-control {
+  padding: 18px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.mc-control.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+
+.mc-channel {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 12px;
+}
+
+.mc-channel-btn {
+  aspect-ratio: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mc-channel-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+
 .mirror-client-header {
   display: flex;
   justify-content: space-between;

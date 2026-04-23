@@ -11,20 +11,44 @@ const TEMPLATE = `
       <div class="mirror-client-code" data-role="code">------</div>
     </div>
 
-    <div class="mirror-client-lcd">
-      <div class="lcd-row">
-        <span class="lcd-label" data-role="lcd-bank">—</span>
-        <span class="lcd-label" data-role="lcd-patch-num">000/000</span>
+    <div class="mirror-client-body" data-role="body">
+      <div class="mirror-client-lcd">
+        <div class="lcd-row">
+          <span class="lcd-label" data-role="lcd-bank">—</span>
+          <span class="lcd-label" data-role="lcd-patch-num">000/000</span>
+        </div>
+        <div class="lcd-patch" data-role="lcd-patch-name">—</div>
+        <div class="lcd-midi-info">
+          <span>CH <span data-role="lcd-channel">1</span></span>
+          <span data-role="lcd-msg">—</span>
+        </div>
       </div>
-      <div class="lcd-patch" data-role="lcd-patch-name">—</div>
-      <div class="lcd-midi-info">
-        <span>CH <span data-role="lcd-channel">1</span></span>
-        <span data-role="lcd-msg">—</span>
+
+      <div class="mirror-client-tabs">
+        <button class="mc-tab active" data-tab="patches">PATCHES</button>
+        <button class="mc-tab" data-tab="effects">EFFECTS</button>
+        <button class="mc-tab" data-tab="controls">CONTROLS</button>
+        <button class="mc-tab" data-tab="channel">CHANNEL</button>
+      </div>
+
+      <div class="mc-panel" data-panel="patches">
+        <div class="bank-bar" data-role="bank-bar"></div>
+        <div class="patch-list" data-role="patch-list"></div>
+      </div>
+
+      <div class="mc-panel hidden" data-panel="effects">
+        <div class="mc-effects" data-role="effects"></div>
+      </div>
+
+      <div class="mc-panel hidden" data-panel="controls">
+        <div class="mc-controls" data-role="controls"></div>
+      </div>
+
+      <div class="mc-panel hidden" data-panel="channel">
+        <div class="mc-channel" data-role="channel-grid"></div>
       </div>
     </div>
 
-    <div class="bank-bar" data-role="bank-bar"></div>
-    <div class="patch-list" data-role="patch-list"></div>
     <div class="mirror-client-waiting" data-role="waiting">
       <div class="mirror-client-waiting-title">Waiting for host…</div>
       <div class="mirror-client-waiting-help">
@@ -32,6 +56,7 @@ const TEMPLATE = `
         in Settings. If you just reloaded this page, give it a second.
       </div>
     </div>
+
     <div class="mirror-client-footer" data-role="footer">Connecting…</div>
   </div>
 `;
@@ -39,12 +64,21 @@ const TEMPLATE = `
 export function mountMirrorClient(root, code) {
   root.innerHTML = TEMPLATE;
   const $ = (sel) => root.querySelector(sel);
+  const $$ = (sel) => root.querySelectorAll(sel);
   $('[data-role="code"]').textContent = `#${code}`;
 
   let state = null;
   let profile = loadDefaultProfile();
+  let activeTab = 'patches';
   let lastRenderedProfile = null;
   let lastRenderedBank = null;
+  let lastEffectsProfile = null;
+  let lastControlsProfile = null;
+  let channelBuilt = false;
+
+  $$('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
 
   const client = createMirrorClient(code, {
     onStatus: (st) => {
@@ -60,6 +94,10 @@ export function mountMirrorClient(root, code) {
       if (payload.profileId && (!profile || profile.id !== payload.profileId)) {
         try { profile = loadProfile(payload.profileId); }
         catch { profile = loadDefaultProfile(); }
+        lastRenderedProfile = null;
+        lastEffectsProfile = null;
+        lastControlsProfile = null;
+        channelBuilt = false;
       }
       render();
     },
@@ -68,22 +106,24 @@ export function mountMirrorClient(root, code) {
     },
   });
 
+  function switchTab(tab) {
+    activeTab = tab;
+    $$('.mc-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    $$('.mc-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tab));
+    if (state) render();
+  }
+
   function render() {
     const waitingEl = $('[data-role="waiting"]');
-    const lcdEl = root.querySelector('.mirror-client-lcd');
-    const bankBarEl = $('[data-role="bank-bar"]');
-    const patchListEl = $('[data-role="patch-list"]');
+    const bodyEl = $('[data-role="body"]');
     if (!state) {
       waitingEl.classList.remove('hidden');
-      lcdEl.classList.add('hidden');
-      bankBarEl.classList.add('hidden');
-      patchListEl.classList.add('hidden');
+      bodyEl.classList.add('hidden');
       return;
     }
     waitingEl.classList.add('hidden');
-    lcdEl.classList.remove('hidden');
-    bankBarEl.classList.remove('hidden');
-    patchListEl.classList.remove('hidden');
+    bodyEl.classList.remove('hidden');
+
     const bank = profile.banks[state.bankIndex];
     const patches = bank?.patches || [];
     const patch = patches[state.patchIndex];
@@ -98,8 +138,10 @@ export function mountMirrorClient(root, code) {
     $('[data-role="lcd-msg"]').textContent = state.lastMessage || '—';
     $('[data-role="footer"]').textContent = `${profile.manufacturer} ${profile.model}`;
 
-    renderBankBar();
-    renderPatchList();
+    if (activeTab === 'patches') { renderBankBar(); renderPatchList(); }
+    if (activeTab === 'effects') renderEffects();
+    if (activeTab === 'controls') renderControls();
+    if (activeTab === 'channel') renderChannel();
   }
 
   function renderBankBar() {
@@ -145,6 +187,81 @@ export function mountMirrorClient(root, code) {
     }
     list.querySelectorAll('.patch-item').forEach((btn, i) => {
       btn.classList.toggle('active', i === state.patchIndex);
+    });
+  }
+
+  function renderEffects() {
+    const host = $('[data-role="effects"]');
+    if (lastEffectsProfile !== profile.id) {
+      host.innerHTML = '';
+      for (const fx of profile.effects || []) {
+        const row = document.createElement('div');
+        row.className = 'mc-effect';
+        row.dataset.fxId = fx.id;
+        row.innerHTML = `
+          <div class="mc-effect-label">
+            <span>${fx.label}</span>
+            <span class="mc-effect-value" data-role="value">0</span>
+          </div>
+          <input type="range" class="mc-effect-range"
+            min="${fx.min ?? 0}" max="${fx.max ?? 127}" value="${fx.default ?? 0}">
+        `;
+        const input = row.querySelector('input');
+        input.addEventListener('input', (e) => {
+          const v = Number(e.target.value);
+          row.querySelector('[data-role="value"]').textContent = v;
+          client.sendCommand({ action: 'setEffectValue', args: [fx.id, v] });
+        });
+        host.appendChild(row);
+      }
+      lastEffectsProfile = profile.id;
+    }
+    for (const row of host.querySelectorAll('.mc-effect')) {
+      const id = row.dataset.fxId;
+      const v = state.effectValues?.[id] ?? 0;
+      const input = row.querySelector('input');
+      if (document.activeElement !== input) input.value = v;
+      row.querySelector('[data-role="value"]').textContent = v;
+    }
+  }
+
+  function renderControls() {
+    const host = $('[data-role="controls"]');
+    if (lastControlsProfile !== profile.id) {
+      host.innerHTML = '';
+      for (const ctl of profile.controls || []) {
+        const btn = document.createElement('button');
+        btn.className = 'mc-control';
+        btn.dataset.ctlId = ctl.id;
+        btn.textContent = ctl.label;
+        btn.addEventListener('click', () => {
+          client.sendCommand({ action: 'toggleControl', args: [ctl.id] });
+        });
+        host.appendChild(btn);
+      }
+      lastControlsProfile = profile.id;
+    }
+    for (const btn of host.querySelectorAll('.mc-control')) {
+      const id = btn.dataset.ctlId;
+      btn.classList.toggle('active', !!state.controlStates?.[id]);
+    }
+  }
+
+  function renderChannel() {
+    const host = $('[data-role="channel-grid"]');
+    if (!channelBuilt) {
+      host.innerHTML = '';
+      for (let i = 0; i < 16; i++) {
+        const btn = document.createElement('button');
+        btn.className = 'mc-channel-btn';
+        btn.textContent = String(i + 1);
+        btn.addEventListener('click', () => client.sendCommand({ action: 'setChannel', args: [i] }));
+        host.appendChild(btn);
+      }
+      channelBuilt = true;
+    }
+    host.querySelectorAll('.mc-channel-btn').forEach((btn, i) => {
+      btn.classList.toggle('active', i === state.channel);
     });
   }
 
