@@ -24,6 +24,7 @@ export const COLORS = {
   gridLine: 'rgba(255,255,255,0.03)',
   gridLineBeat: 'rgba(255,255,255,0.07)',
   hitLine: 'rgba(255,255,255,0.15)',
+  accent: '#FF7A1A',
 };
 
 export function midiNoteName(midi) {

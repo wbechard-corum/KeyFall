@@ -78,7 +78,11 @@ export function mountTrainer(root) {
   const canvasWrap = $('[data-role="canvas-wrap"]');
   const renderer = createRenderer(canvas);
 
-  const pressedKeys = new Set();
+  // pressedKeys carries both membership and velocity so the piano
+  // highlight can show how hard a note was played. .has(n) and
+  // .set(n, v)/.delete(n) give us the same API shape the renderer
+  // expects.
+  const pressedKeys = new Map();
 
   const playback = createPlayback({
     onTick: () => render(),
@@ -129,6 +133,7 @@ export function mountTrainer(root) {
       song: playback.state.song,
       currentTime: playback.state.currentTime,
       pressedKeys,
+      keyVelocity: pressedKeys,
       trackMuted: playback.state.trackMuted,
       isPlaying: playback.isPlaying(),
     });
@@ -290,28 +295,36 @@ export function mountTrainer(root) {
       if (note !== null) noteOn(note);
     });
     canvas.addEventListener('pointerup', () => {
-      for (const note of pressedKeys) noteOff(note);
+      for (const note of Array.from(pressedKeys.keys())) noteOff(note);
     });
     canvas.addEventListener('pointercancel', () => {
-      for (const note of pressedKeys) noteOff(note);
+      for (const note of Array.from(pressedKeys.keys())) noteOff(note);
     });
   }
 
-  function noteOn(midi) {
-    pressedKeys.add(midi);
-    playNote(midi, 0.5, 90);
+  function noteOn(midi, velocity = 90) {
+    pressedKeys.set(midi, velocity);
+    playNote(midi, 0.5, velocity);
     playback.reportKeyPress(midi);
+    if (midiOutEnabled) {
+      const channel = getSetting('midiChannel') ?? 0;
+      sendNoteOn(channel, midi, velocity);
+    }
     render();
   }
 
   function noteOff(midi) {
     pressedKeys.delete(midi);
+    if (midiOutEnabled) {
+      const channel = getSetting('midiChannel') ?? 0;
+      sendNoteOff(channel, midi);
+    }
     render();
   }
 
-  const unsubscribeMIDI = onMIDINote(({ type, note }) => {
+  const unsubscribeMIDI = onMIDINote(({ type, note, velocity }) => {
     if (type === 'on') {
-      pressedKeys.add(note);
+      pressedKeys.set(note, velocity || 100);
       playback.reportKeyPress(note);
     } else {
       pressedKeys.delete(note);
@@ -342,7 +355,8 @@ export function mountTrainer(root) {
       trackMuted: [...playback.state.trackMuted],
       waitingForNote: playback.state.waitingForNote?.midi ?? null,
       midiOutEnabled,
-      pressedKeys: [...pressedKeys],
+      // Array of [midi, velocity] so the client can rebuild a Map.
+      pressedKeys: Array.from(pressedKeys.entries()),
       serverTime: performance.now(),
     });
   }
@@ -386,6 +400,17 @@ export function mountTrainer(root) {
       }
       case 'setMidiOut':  setMidiOutEnabled(!!cmd.args?.[0]); break;
       case 'loadSongById': loadSongById(cmd.args?.[0]); break;
+      case 'touchNoteOn': {
+        const midi = cmd.args?.[0];
+        const velocity = cmd.args?.[1] ?? 90;
+        if (typeof midi === 'number') noteOn(midi, velocity);
+        break;
+      }
+      case 'touchNoteOff': {
+        const midi = cmd.args?.[0];
+        if (typeof midi === 'number') noteOff(midi);
+        break;
+      }
       case 'loadDemo': {
         const id = cmd.args?.[0];
         const demo = DEMOS[id];

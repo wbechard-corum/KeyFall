@@ -4,6 +4,7 @@ import { createRenderer } from '../trainer/renderer.js';
 import { parseMIDI } from '../midi/parser.js';
 import { DEMOS } from '../trainer/demos.js';
 import { getSong } from '../trainer/library.js';
+import { keyAtPoint } from '../shared/piano-keyboard.js';
 
 const TEMPLATE = `
   <div class="mirror-client-root">
@@ -238,6 +239,8 @@ export function mountMirrorClient(root, code) {
   };
   let canvasRafId = null;
 
+  const clientPressed = new Set();  // notes the client itself is touching
+
   function ensureTrainerRenderer() {
     if (trainerRenderer) return;
     trainerCanvas = $('[data-role="trainer-canvas"]');
@@ -249,6 +252,47 @@ export function mountMirrorClient(root, code) {
       trainerRenderer?.resize();
       renderClientCanvas();
     }).observe(wrap);
+
+    // Touch-to-play: taps on the piano strip become note-on/off commands
+    // to the host. Velocity comes from the tap position within the key's
+    // height (further down = harder), capped 40..120.
+    trainerCanvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      trainerCanvas.setPointerCapture?.(e.pointerId);
+      const midi = noteAtPointer(e);
+      if (midi === null) return;
+      const vel = velocityFromPointer(e);
+      clientPressed.add(midi);
+      client.sendCommand({ target: 'trainer', action: 'touchNoteOn', args: [midi, vel] });
+    });
+    const releaseAll = () => {
+      for (const midi of clientPressed) {
+        client.sendCommand({ target: 'trainer', action: 'touchNoteOff', args: [midi] });
+      }
+      clientPressed.clear();
+    };
+    trainerCanvas.addEventListener('pointerup', releaseAll);
+    trainerCanvas.addEventListener('pointercancel', releaseAll);
+    trainerCanvas.addEventListener('pointerleave', releaseAll);
+  }
+
+  function noteAtPointer(e) {
+    const rect = trainerCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const { H, pianoHeight, layout } = trainerRenderer.getState();
+    return keyAtPoint(layout, x, y, H - pianoHeight, pianoHeight);
+  }
+
+  function velocityFromPointer(e) {
+    const rect = trainerCanvas.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const { H, pianoHeight } = trainerRenderer.getState();
+    const pianoTop = H - pianoHeight;
+    // Further down the key = higher velocity (mimics an actual
+    // weighted keyboard's aftertouch zone).
+    const rel = Math.max(0, Math.min(1, (y - pianoTop) / pianoHeight));
+    return Math.round(40 + rel * 80);
   }
 
   async function syncClientSong(meta) {
@@ -308,11 +352,20 @@ export function mountMirrorClient(root, code) {
   function renderClientCanvas() {
     if (!trainerRenderer) return;
     const t = state?.trainer;
+    // Host publishes pressedKeys as [[midi, velocity], ...] tuples.
+    // Fall back tolerantly when older hosts publish just an array of
+    // midi numbers so a version skew doesn't crash the canvas.
+    const keyMap = new Map();
+    for (const entry of t?.pressedKeys || []) {
+      if (Array.isArray(entry)) keyMap.set(entry[0], entry[1] ?? 100);
+      else keyMap.set(entry, 100);
+    }
     if (!t || !currentClientSong) {
       trainerRenderer.render({
         song: null,
         currentTime: 0,
         pressedKeys: new Set(),
+        keyVelocity: new Map(),
         trackMuted: [false, false],
         isPlaying: false,
       });
@@ -322,7 +375,8 @@ export function mountMirrorClient(root, code) {
     trainerRenderer.render({
       song: currentClientSong,
       currentTime: time,
-      pressedKeys: new Set(t.pressedKeys || []),
+      pressedKeys: keyMap,
+      keyVelocity: keyMap,
       trackMuted: t.trackMuted || [false, false],
       isPlaying: t.playing,
     });

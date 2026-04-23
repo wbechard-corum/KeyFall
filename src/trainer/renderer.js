@@ -128,14 +128,19 @@ export function createRenderer(canvas) {
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
 
-      if (isActive && noteH > 16) {
+      // Draw note name on every bar wide and tall enough to host it,
+      // not just active ones — lets learners read upcoming keys.
+      if (!isPast && noteH > 14 && w > 14) {
         const noteName = NOTE_NAMES[note.midi % 12];
         const octave = Math.floor(note.midi / 12) - 1;
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillStyle = isActive ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.55)';
         ctx.font = '600 10px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(noteName + octave, x, yTop + noteH / 2);
+        // Anchor label near the bottom of the bar so long sustains
+        // still show the name when the top scrolls off-screen.
+        const labelY = Math.min(yTop + noteH / 2, yBottom - 8);
+        ctx.fillText(noteName + octave, x, labelY);
       }
     }
   }
@@ -160,10 +165,17 @@ export function createRenderer(canvas) {
     return 0;
   }
 
-  function drawPiano(song, currentTime, pressedKeys, trackMuted) {
+  function drawPiano(song, currentTime, pressedKeys, trackMuted, keyVelocity) {
     const y = state.H - state.pianoHeight;
     ctx.fillStyle = '#0a0a0e';
     ctx.fillRect(0, y, state.W, state.pianoHeight);
+
+    function velocityGlow(note) {
+      // Map velocity 1..127 to alpha 0.35..1. Default to full if no
+      // velocity info (backwards-compat for callers that still pass a Set).
+      const v = keyVelocity?.get?.(note) ?? (keyVelocity?.[note] ?? 100);
+      return 0.35 + 0.65 * Math.max(0, Math.min(1, v / 127));
+    }
 
     for (const key of state.layout.whiteKeyPositions) {
       const pressed = pressedKeys.has(key.note);
@@ -180,6 +192,13 @@ export function createRenderer(canvas) {
         const track = activeNoteTrack(song, key.note, currentTime);
         ctx.fillStyle = track === 0 ? COLORS.rightHand : COLORS.leftHand;
         ctx.globalAlpha = 0.25;
+        ctx.fillRect(key.x + 0.5, y + 1, key.w - 1, state.pianoHeight - 2);
+        ctx.globalAlpha = 1;
+      }
+
+      if (pressed) {
+        ctx.fillStyle = COLORS.accent || '#FF7A1A';
+        ctx.globalAlpha = 0.15 + 0.55 * velocityGlow(key.note);
         ctx.fillRect(key.x + 0.5, y + 1, key.w - 1, state.pianoHeight - 2);
         ctx.globalAlpha = 1;
       }
@@ -213,13 +232,20 @@ export function createRenderer(canvas) {
         ctx.globalAlpha = 1;
       }
 
+      if (pressed) {
+        ctx.fillStyle = COLORS.accent || '#FF7A1A';
+        ctx.globalAlpha = 0.2 + 0.6 * velocityGlow(key.note);
+        ctx.fillRect(key.x, y, key.w, bkH);
+        ctx.globalAlpha = 1;
+      }
+
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 0.5;
       ctx.strokeRect(key.x, y, key.w, bkH);
     }
   }
 
-  function render({ song, currentTime, pressedKeys, trackMuted, isPlaying }) {
+  function render({ song, currentTime, pressedKeys, trackMuted, isPlaying, keyVelocity }) {
     ctx.clearRect(0, 0, state.W, state.H);
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, state.W, state.H);
@@ -229,7 +255,7 @@ export function createRenderer(canvas) {
       drawNotes(song, currentTime, trackMuted, isPlaying);
       drawHitLine();
     }
-    drawPiano(song, currentTime, pressedKeys, trackMuted);
+    drawPiano(song, currentTime, pressedKeys, trackMuted, keyVelocity);
   }
 
   return {
