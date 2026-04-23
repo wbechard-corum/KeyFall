@@ -92,6 +92,54 @@ function bootMirrorClient(code) {
   registerServiceWorker();
 }
 
+function setupRemoteModal() {
+  const modal = document.getElementById('remoteModal');
+  const input = document.getElementById('remoteCodeInput');
+  const error = document.getElementById('remoteModalError');
+  const openBtn = document.getElementById('modeRemote');
+  const cancelBtn = document.getElementById('remoteCancel');
+  const connectBtn = document.getElementById('remoteConnect');
+  const backdrop = modal.querySelector('[data-role="backdrop"]');
+
+  function open() {
+    error.classList.add('hidden');
+    input.value = '';
+    modal.classList.remove('hidden');
+    // Delay focus so the modal animation settles and iOS brings up
+    // the numeric keyboard reliably.
+    setTimeout(() => input.focus(), 50);
+  }
+
+  function close() {
+    modal.classList.add('hidden');
+  }
+
+  function submit() {
+    const code = (input.value || '').replace(/\D/g, '');
+    if (code.length !== 6) {
+      error.textContent = 'Enter all 6 digits.';
+      error.classList.remove('hidden');
+      input.focus();
+      return;
+    }
+    location.hash = `#mirror=${code}`;
+    location.reload();
+  }
+
+  openBtn.addEventListener('click', open);
+  cancelBtn.addEventListener('click', close);
+  backdrop.addEventListener('click', close);
+  connectBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit();
+    else if (e.key === 'Escape') close();
+  });
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/\D/g, '').slice(0, 6);
+    error.classList.add('hidden');
+  });
+}
+
 function boot() {
   const code = parseMirrorCode();
   if (code) {
@@ -101,6 +149,7 @@ function boot() {
 
   setupModeSwitcher();
   setupMIDIStatus();
+  setupRemoteModal();
 
   // Eagerly request MIDI (user can also trigger via tapping the status label).
   requestAccess({ sysex: true }).then(() => autoSelect({ preferManufacturer: 'Roland' }));

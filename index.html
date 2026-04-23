@@ -19,6 +19,7 @@
       <button class="mode-tab active" data-mode="trainer">TRAINER</button>
       <button class="mode-tab" data-mode="controller">CONTROLLER</button>
     </div>
+    <button class="mode-remote" id="modeRemote" title="Use this device as a remote for another KeyFall session">REMOTE</button>
     <div class="mode-midi">
       <div class="midi-dot" id="globalMidiDot"></div>
       <span id="globalMidiLabel">NO MIDI</span>
@@ -27,6 +28,29 @@
 
   <section class="mode-view" id="trainerView"></section>
   <section class="mode-view hidden" id="controllerView"></section>
+
+  <div class="remote-modal hidden" id="remoteModal">
+    <div class="remote-modal-backdrop" data-role="backdrop"></div>
+    <div class="remote-modal-card">
+      <div class="remote-modal-title">Connect as Remote</div>
+      <div class="remote-modal-help">Enter the 6-digit code from the host's Controller → Settings → Mirror to iPad panel.</div>
+      <input
+        type="text"
+        inputmode="numeric"
+        pattern="\d{6}"
+        maxlength="6"
+        autocomplete="off"
+        class="remote-modal-input"
+        id="remoteCodeInput"
+        placeholder="000000"
+      >
+      <div class="remote-modal-error hidden" id="remoteModalError"></div>
+      <div class="remote-modal-actions">
+        <button class="remote-modal-btn" id="remoteCancel">Cancel</button>
+        <button class="remote-modal-btn primary" id="remoteConnect">Connect</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script type="module" src="./src/main.js"></script>
