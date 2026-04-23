@@ -19,5 +19,11 @@ services:
     image: keyfall-mirror:latest
     container_name: keyfall-mirror
     restart: unless-stopped
-    # No external port by default — nginx proxies /mirror/ws over the
-    # same origin. Expose 8081 yourself if you run the relay standalone.
+    volumes:
+      - keyfall-data:/data
+    # No external port by default — nginx proxies /api/* and /mirror/ws
+    # over the same origin. Expose 8081 yourself if you run the service
+    # standalone.
+
+volumes:
+  keyfall-data:
