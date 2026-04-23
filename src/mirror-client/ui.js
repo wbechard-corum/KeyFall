@@ -29,6 +29,7 @@ const TEMPLATE = `
         <button class="mc-tab" data-tab="effects">EFFECTS</button>
         <button class="mc-tab" data-tab="controls">CONTROLS</button>
         <button class="mc-tab" data-tab="channel">CHANNEL</button>
+        <button class="mc-tab" data-tab="trainer">TRAINER</button>
       </div>
 
       <div class="mc-panel" data-panel="patches">
@@ -46,6 +47,44 @@ const TEMPLATE = `
 
       <div class="mc-panel hidden" data-panel="channel">
         <div class="mc-channel" data-role="channel-grid"></div>
+      </div>
+
+      <div class="mc-panel hidden" data-panel="trainer">
+        <div class="mc-trainer" data-role="trainer">
+          <div class="mc-trainer-song" data-role="trainer-song">No song loaded</div>
+          <div class="mc-trainer-progress" data-role="trainer-progress-track">
+            <div class="mc-trainer-progress-fill" data-role="trainer-progress-fill"></div>
+          </div>
+          <div class="mc-trainer-time">
+            <span data-role="trainer-time-current">0:00</span>
+            <span data-role="trainer-time-total">0:00</span>
+          </div>
+          <div class="mc-trainer-transport">
+            <button class="mc-trainer-btn primary" data-action="play">PLAY</button>
+            <button class="mc-trainer-btn" data-action="stop">STOP</button>
+          </div>
+          <div class="mc-trainer-row">
+            <label>Speed</label>
+            <select class="mc-trainer-select" data-action="speed">
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x</option>
+              <option value="0.75">0.75x</option>
+              <option value="1" selected>1x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+            </select>
+          </div>
+          <div class="mc-trainer-row">
+            <button class="mc-trainer-toggle" data-action="wait">WAIT</button>
+            <button class="mc-trainer-toggle" data-action="midi-out">MIDI OUT</button>
+            <button class="mc-trainer-toggle" data-action="track-r">R</button>
+            <button class="mc-trainer-toggle" data-action="track-l">L</button>
+          </div>
+          <div class="mc-trainer-library">
+            <div class="mc-trainer-library-title">Library</div>
+            <div class="mc-trainer-library-list" data-role="trainer-library"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -80,6 +119,22 @@ export function mountMirrorClient(root, code) {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
+  function tCmd(action, args) { client.sendCommand({ target: 'trainer', action, args }); }
+  $('[data-action="play"]').addEventListener('click', () => {
+    tCmd(state?.trainer?.playing ? 'pause' : 'play', []);
+  });
+  $('[data-action="stop"]').addEventListener('click', () => tCmd('stop', []));
+  $('[data-action="speed"]').addEventListener('change', (e) => tCmd('setSpeed', [Number(e.target.value)]));
+  $('[data-action="wait"]').addEventListener('click', () => tCmd('setWaitMode', [!state?.trainer?.waitMode]));
+  $('[data-action="midi-out"]').addEventListener('click', () => tCmd('setMidiOut', [!state?.trainer?.midiOutEnabled]));
+  $('[data-action="track-r"]').addEventListener('click', () => tCmd('toggleTrack', [0]));
+  $('[data-action="track-l"]').addEventListener('click', () => tCmd('toggleTrack', [1]));
+  $('[data-role="trainer-progress-track"]').addEventListener('click', (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    tCmd('seekPct', [Math.max(0, Math.min(1, pct))]);
+  });
+
   const client = createMirrorClient(code, {
     onStatus: (st) => {
       const statusEl = $('[data-role="status"]');
@@ -91,8 +146,9 @@ export function mountMirrorClient(root, code) {
     },
     onState: (payload) => {
       state = payload;
-      if (payload.profileId && (!profile || profile.id !== payload.profileId)) {
-        try { profile = loadProfile(payload.profileId); }
+      const c = payload.controller;
+      if (c?.profileId && (!profile || profile.id !== c.profileId)) {
+        try { profile = loadProfile(c.profileId); }
         catch { profile = loadDefaultProfile(); }
         lastRenderedProfile = null;
         lastEffectsProfile = null;
@@ -110,6 +166,7 @@ export function mountMirrorClient(root, code) {
     activeTab = tab;
     $$('.mc-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     $$('.mc-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tab));
+    if (tab === 'trainer') refreshTrainerLibrary();
     if (state) render();
   }
 
@@ -124,24 +181,106 @@ export function mountMirrorClient(root, code) {
     waitingEl.classList.add('hidden');
     bodyEl.classList.remove('hidden');
 
-    const bank = profile.banks[state.bankIndex];
+    const c = state.controller || {};
+    const bank = profile.banks[c.bankIndex ?? 0];
     const patches = bank?.patches || [];
-    const patch = patches[state.patchIndex];
+    const patch = patches[c.patchIndex ?? 0];
     const patchName = patch ? (patch.name || patch) : '—';
 
     $('[data-role="lcd-bank"]').textContent = bank?.label ?? '—';
     $('[data-role="lcd-patch-num"]').textContent = bank
-      ? `${String(state.patchIndex + 1).padStart(3, '0')}/${patches.length}`
+      ? `${String((c.patchIndex ?? 0) + 1).padStart(3, '0')}/${patches.length}`
       : '000/000';
     $('[data-role="lcd-patch-name"]').textContent = patchName;
-    $('[data-role="lcd-channel"]').textContent = (state.channel ?? 0) + 1;
-    $('[data-role="lcd-msg"]').textContent = state.lastMessage || '—';
+    $('[data-role="lcd-channel"]').textContent = (c.channel ?? 0) + 1;
+    $('[data-role="lcd-msg"]').textContent = c.lastMessage || '—';
     $('[data-role="footer"]').textContent = `${profile.manufacturer} ${profile.model}`;
 
     if (activeTab === 'patches') { renderBankBar(); renderPatchList(); }
     if (activeTab === 'effects') renderEffects();
     if (activeTab === 'controls') renderControls();
     if (activeTab === 'channel') renderChannel();
+    if (activeTab === 'trainer') renderTrainer();
+  }
+
+  let librarySnapshot = [];
+  let libraryLoading = false;
+
+  async function refreshTrainerLibrary() {
+    if (libraryLoading) return;
+    libraryLoading = true;
+    try {
+      const res = await fetch('/api/songs');
+      if (!res.ok) throw new Error(`list failed: ${res.status}`);
+      librarySnapshot = await res.json();
+    } catch {
+      librarySnapshot = [];
+    } finally {
+      libraryLoading = false;
+      renderTrainerLibrary();
+    }
+  }
+
+  function renderTrainerLibrary() {
+    const list = $('[data-role="trainer-library"]');
+    list.innerHTML = '';
+    if (librarySnapshot.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'mc-trainer-library-empty';
+      empty.textContent = 'No songs on server yet.';
+      list.appendChild(empty);
+      return;
+    }
+    for (const row of librarySnapshot) {
+      const btn = document.createElement('button');
+      btn.className = 'mc-trainer-library-item';
+      const isActive = state?.trainer?.song?.id === row.id;
+      if (isActive) btn.classList.add('active');
+      btn.textContent = row.name;
+      btn.addEventListener('click', () => {
+        client.sendCommand({ target: 'trainer', action: 'loadSongById', args: [row.id] });
+      });
+      list.appendChild(btn);
+    }
+  }
+
+  function formatClock(s) {
+    if (!Number.isFinite(s) || s < 0) s = 0;
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function renderTrainer() {
+    const t = state.trainer;
+    if (!t) {
+      $('[data-role="trainer-song"]').textContent = 'Waiting for trainer state…';
+      return;
+    }
+    const song = t.song || {};
+    const name = song.name || 'No song loaded';
+    const total = song.duration || 0;
+    const current = t.currentTime || 0;
+
+    $('[data-role="trainer-song"]').textContent = `${name}${song.notes ? ` · ${song.notes} notes` : ''}`;
+    const pct = total > 0 ? Math.min(100, (current / total) * 100) : 0;
+    $('[data-role="trainer-progress-fill"]').style.width = pct + '%';
+    $('[data-role="trainer-time-current"]').textContent = formatClock(current);
+    $('[data-role="trainer-time-total"]').textContent = formatClock(total);
+
+    const playBtn = $('[data-action="play"]');
+    playBtn.textContent = t.playing ? 'PAUSE' : 'PLAY';
+    playBtn.classList.toggle('active', !!t.playing);
+
+    const speedSelect = $('[data-action="speed"]');
+    if (document.activeElement !== speedSelect) speedSelect.value = String(t.speed ?? 1);
+
+    $('[data-action="wait"]').classList.toggle('active', !!t.waitMode);
+    $('[data-action="midi-out"]').classList.toggle('active', !!t.midiOutEnabled);
+    $('[data-action="track-r"]').classList.toggle('muted', !!t.trackMuted?.[0]);
+    $('[data-action="track-l"]').classList.toggle('muted', !!t.trackMuted?.[1]);
+
+    renderTrainerLibrary();
   }
 
   function renderBankBar() {
@@ -152,23 +291,25 @@ export function mountMirrorClient(root, code) {
         const btn = document.createElement('button');
         btn.className = 'bank-btn';
         btn.textContent = bank.label;
-        btn.addEventListener('click', () => client.sendCommand({ action: 'setBank', args: [i] }));
+        btn.addEventListener('click', () => client.sendCommand({ target: 'controller', action: 'setBank', args: [i] }));
         bar.appendChild(btn);
       });
       lastRenderedProfile = profile.id;
       lastRenderedBank = null;
     }
+    const c = state.controller || {};
     bar.querySelectorAll('.bank-btn').forEach((btn, i) => {
-      btn.classList.toggle('active', i === state.bankIndex);
+      btn.classList.toggle('active', i === (c.bankIndex ?? 0));
     });
   }
 
   function renderPatchList() {
     const list = $('[data-role="patch-list"]');
-    const key = `${profile.id}:${state.bankIndex}`;
+    const c = state.controller || {};
+    const key = `${profile.id}:${c.bankIndex ?? 0}`;
     if (lastRenderedBank !== key) {
       list.innerHTML = '';
-      const bank = profile.banks[state.bankIndex];
+      const bank = profile.banks[c.bankIndex ?? 0];
       const patches = bank?.patches || [];
       patches.forEach((patch, i) => {
         const btn = document.createElement('button');
@@ -179,14 +320,14 @@ export function mountMirrorClient(root, code) {
           <span class="patch-name">${name}</span>
         `;
         btn.addEventListener('click', () => {
-          client.sendCommand({ action: 'setPatch', args: [i] });
+          client.sendCommand({ target: 'controller', action: 'setPatch', args: [i] });
         });
         list.appendChild(btn);
       });
       lastRenderedBank = key;
     }
     list.querySelectorAll('.patch-item').forEach((btn, i) => {
-      btn.classList.toggle('active', i === state.patchIndex);
+      btn.classList.toggle('active', i === (c.patchIndex ?? 0));
     });
   }
 
@@ -210,15 +351,16 @@ export function mountMirrorClient(root, code) {
         input.addEventListener('input', (e) => {
           const v = Number(e.target.value);
           row.querySelector('[data-role="value"]').textContent = v;
-          client.sendCommand({ action: 'setEffectValue', args: [fx.id, v] });
+          client.sendCommand({ target: 'controller', action: 'setEffectValue', args: [fx.id, v] });
         });
         host.appendChild(row);
       }
       lastEffectsProfile = profile.id;
     }
+    const c = state.controller || {};
     for (const row of host.querySelectorAll('.mc-effect')) {
       const id = row.dataset.fxId;
-      const v = state.effectValues?.[id] ?? 0;
+      const v = c.effectValues?.[id] ?? 0;
       const input = row.querySelector('input');
       if (document.activeElement !== input) input.value = v;
       row.querySelector('[data-role="value"]').textContent = v;
@@ -235,15 +377,16 @@ export function mountMirrorClient(root, code) {
         btn.dataset.ctlId = ctl.id;
         btn.textContent = ctl.label;
         btn.addEventListener('click', () => {
-          client.sendCommand({ action: 'toggleControl', args: [ctl.id] });
+          client.sendCommand({ target: 'controller', action: 'toggleControl', args: [ctl.id] });
         });
         host.appendChild(btn);
       }
       lastControlsProfile = profile.id;
     }
+    const c = state.controller || {};
     for (const btn of host.querySelectorAll('.mc-control')) {
       const id = btn.dataset.ctlId;
-      btn.classList.toggle('active', !!state.controlStates?.[id]);
+      btn.classList.toggle('active', !!c.controlStates?.[id]);
     }
   }
 
@@ -255,13 +398,14 @@ export function mountMirrorClient(root, code) {
         const btn = document.createElement('button');
         btn.className = 'mc-channel-btn';
         btn.textContent = String(i + 1);
-        btn.addEventListener('click', () => client.sendCommand({ action: 'setChannel', args: [i] }));
+        btn.addEventListener('click', () => client.sendCommand({ target: 'controller', action: 'setChannel', args: [i] }));
         host.appendChild(btn);
       }
       channelBuilt = true;
     }
+    const c = state.controller || {};
     host.querySelectorAll('.mc-channel-btn').forEach((btn, i) => {
-      btn.classList.toggle('active', i === state.channel);
+      btn.classList.toggle('active', i === c.channel);
     });
   }
 

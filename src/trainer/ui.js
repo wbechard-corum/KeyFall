@@ -6,6 +6,8 @@ import { onNote as onMIDINote } from '../midi/input.js';
 import { sendNoteOn, sendNoteOff } from '../midi/output.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
 import { getSetting, updateSettings } from '../shared/settings.js';
+import { setSection, setCommandHandler } from '../shared/app-mirror.js';
+import { getSong } from './library.js';
 import { DEMOS } from './demos.js';
 import { saveSong } from './library.js';
 
@@ -131,6 +133,7 @@ export function mountTrainer(root) {
       isPlaying: playback.isPlaying(),
     });
     updateProgress();
+    publishTrainerState();
   }
 
   function setPlayButtonState(playing) {
@@ -147,12 +150,20 @@ export function mountTrainer(root) {
     fill.style.width = pct + '%';
   }
 
-  function onSongLoaded(song) {
+  function onSongLoaded(song, meta = {}) {
     playback.setSong(song);
     const info = $('[data-role="song-info"]');
     info.textContent = `${song.name} · ${song.notes.length} notes · ${formatTime(song.duration)}`;
     $('[data-role="drop-overlay"]').classList.add('hidden');
     resumeAudio();
+    currentSongMeta = {
+      id: meta.id ?? null,
+      demoId: meta.demoId ?? null,
+      name: song.name,
+      source: meta.source ?? 'adhoc',
+      duration: song.duration,
+      notes: song.notes.length,
+    };
     render();
   }
 
@@ -185,11 +196,11 @@ export function mountTrainer(root) {
     reader.readAsArrayBuffer(file);
   }
 
-  function loadSongBytes(name, bytes) {
+  function loadSongBytes(name, bytes, meta = {}) {
     try {
       const song = parseMIDI(bytes);
       song.name = name;
-      onSongLoaded(song);
+      onSongLoaded(song, meta);
     } catch (err) {
       alert('Error loading song: ' + err.message);
     }
@@ -204,7 +215,7 @@ export function mountTrainer(root) {
       btn.innerHTML = `<span>${demo.label}</span><span class="difficulty">${demo.difficulty}</span>`;
       btn.addEventListener('click', () => {
         const song = demo.build();
-        onSongLoaded(song);
+        onSongLoaded(song, { source: 'demo', demoId: id });
       });
       list.appendChild(btn);
     }
@@ -316,12 +327,82 @@ export function mountTrainer(root) {
     else if (e.code === 'Escape') playback.stop();
   }
 
+  let currentSongMeta = { id: null, name: null, source: null, duration: 0, notes: 0 };
+
+  function publishTrainerState() {
+    setSection('trainer', {
+      song: currentSongMeta,
+      playing: playback.isPlaying(),
+      currentTime: playback.state.currentTime,
+      speed: playback.state.playSpeed,
+      waitMode: playback.state.waitMode,
+      trackMuted: [...playback.state.trackMuted],
+      waitingForNote: playback.state.waitingForNote?.midi ?? null,
+      midiOutEnabled,
+    });
+  }
+
+  async function loadSongById(id) {
+    const record = await getSong(id).catch(() => null);
+    if (!record) return;
+    try {
+      const song = parseMIDI(record.bytes);
+      song.name = currentSongMeta?.name || 'Song';
+      // Fetch latest name from list if needed — caller usually sets it.
+      currentSongMeta = { id, name: song.name, source: 'library', duration: song.duration, notes: song.notes.length };
+      onSongLoaded(song);
+    } catch (err) {
+      console.warn('Failed to load song by id:', err);
+    }
+  }
+
+  function handleTrainerCommand(cmd) {
+    switch (cmd.action) {
+      case 'play':        if (playback.state.song) playback.play(); break;
+      case 'pause':       playback.pause(); break;
+      case 'stop':        playback.stop(); break;
+      case 'seekPct':     playback.seekPct(cmd.args?.[0] ?? 0); break;
+      case 'setSpeed':    playback.setSpeed(cmd.args?.[0] ?? 1); break;
+      case 'setWaitMode': {
+        const enabled = !!cmd.args?.[0];
+        playback.setWaitMode(enabled);
+        $('[data-action="wait"]').classList.toggle('active', enabled);
+        break;
+      }
+      case 'toggleTrack': {
+        const idx = cmd.args?.[0];
+        if (idx === 0 || idx === 1) {
+          const muted = playback.toggleTrackMuted(idx);
+          const sel = idx === 0 ? '[data-action="track-r"]' : '[data-action="track-l"]';
+          $(sel).classList.toggle('muted', muted);
+          render();
+        }
+        break;
+      }
+      case 'setMidiOut':  setMidiOutEnabled(!!cmd.args?.[0]); break;
+      case 'loadSongById': loadSongById(cmd.args?.[0]); break;
+      case 'loadDemo': {
+        const id = cmd.args?.[0];
+        const demo = DEMOS[id];
+        if (demo) {
+          const song = demo.build();
+          currentSongMeta = { id: null, name: demo.label, source: 'demo', demoId: id, duration: song.duration, notes: song.notes.length };
+          onSongLoaded(song);
+        }
+        break;
+      }
+    }
+  }
+
+  setCommandHandler('trainer', handleTrainerCommand);
+
   renderer.resize();
   buildDemos();
   setupControls();
   setupDragDrop();
   setupTouchPiano();
   render();
+  publishTrainerState();
 
   window.addEventListener('resize', handleResize);
   document.addEventListener('keydown', handleKeydown);

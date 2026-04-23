@@ -3,7 +3,10 @@ import { mountEffects, mountControls } from './effects-ui.js';
 import { availableProfiles } from './profile-loader.js';
 import { onTx } from '../midi/output.js';
 import { onStateChange, getState, selectInput, selectOutput, requestAccess } from '../midi/connection.js';
-import { createMirrorHost } from '../shared/mirror.js';
+import {
+  startMirror, stopMirror, setSection, setCommandHandler,
+  onMirrorStatus, isMirrorActive,
+} from '../shared/app-mirror.js';
 
 const TEMPLATE = `
   <div class="controller-root">
@@ -113,40 +116,26 @@ export function mountController(root) {
   $('[data-action="identity"]').addEventListener('click', () => controller.sendIdentityRequest());
   $('[data-action="mirror-toggle"]').addEventListener('click', toggleMirror);
 
-  let mirrorHost = null;
   let mirrorStatus = null;
-  let unsubscribeMirrorPublish = null;
+
+  setCommandHandler('controller', (cmd) => controller.handleMirrorCommand(cmd));
+  const unsubscribeMirrorPublish = controller.onChange((snap) => {
+    setSection('controller', buildMirrorState(snap));
+  });
+  // Seed initial section state so late-joining clients see controller state.
+  setSection('controller', buildMirrorState(controller.getSnapshot()));
+
+  const unsubscribeMirrorStatus = onMirrorStatus((st) => {
+    mirrorStatus = st;
+    const active = st.state !== 'idle';
+    $('[data-action="mirror-toggle"]').textContent = active ? 'STOP MIRRORING' : 'START MIRRORING';
+    $('[data-role="mirror-status"]').classList.toggle('hidden', !active);
+    if (active) renderMirrorPanel();
+  });
 
   function toggleMirror() {
-    if (mirrorHost) {
-      stopMirror();
-    } else {
-      startMirror();
-    }
-  }
-
-  function startMirror() {
-    mirrorHost = createMirrorHost({
-      onStatus: (st) => { mirrorStatus = st; renderMirrorPanel(); },
-      onCommand: (cmd) => controller.handleMirrorCommand(cmd),
-    });
-    unsubscribeMirrorPublish = controller.onChange((snap) => {
-      mirrorHost?.publishState(buildMirrorState(snap));
-    });
-    // Publish initial snapshot so newly-joining clients see current state.
-    mirrorHost.publishState(buildMirrorState(controller.getSnapshot()));
-    $('[data-action="mirror-toggle"]').textContent = 'STOP MIRRORING';
-    $('[data-role="mirror-status"]').classList.remove('hidden');
-  }
-
-  function stopMirror() {
-    unsubscribeMirrorPublish?.();
-    unsubscribeMirrorPublish = null;
-    mirrorHost?.close();
-    mirrorHost = null;
-    mirrorStatus = null;
-    $('[data-action="mirror-toggle"]').textContent = 'START MIRRORING';
-    $('[data-role="mirror-status"]').classList.add('hidden');
+    if (isMirrorActive()) stopMirror();
+    else startMirror();
   }
 
   function buildMirrorState(snap) {
@@ -369,7 +358,8 @@ export function mountController(root) {
       unsubscribe();
       unsubscribeMIDI();
       unsubscribeTx();
-      stopMirror();
+      unsubscribeMirrorPublish();
+      unsubscribeMirrorStatus();
     },
   };
 }

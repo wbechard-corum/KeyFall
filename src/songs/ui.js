@@ -115,7 +115,7 @@ export function mountSongs(root, { onLoadSong } = {}) {
     try {
       const record = await getSong(row.id);
       if (!record) { showError('Song not found.'); return; }
-      onLoadSong?.({ name: row.name, bytes: record.bytes });
+      onLoadSong?.({ id: row.id, name: row.name, bytes: record.bytes });
     } catch (err) {
       showError(`Load failed: ${err.message}`);
     }

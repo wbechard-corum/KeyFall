@@ -825,6 +825,147 @@ canvas { display: block; width: 100%; height: 100%; }
 
 .mc-channel-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
 
+.mc-trainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.mc-trainer-song {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.mc-trainer-progress {
+  height: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.mc-trainer-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+.mc-trainer-time {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.mc-trainer-transport {
+  display: flex;
+  gap: 6px;
+}
+
+.mc-trainer-btn {
+  flex: 1;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.mc-trainer-btn.primary { border-color: var(--accent); color: var(--accent); }
+.mc-trainer-btn.primary.active { background: var(--accent-dim); }
+
+.mc-trainer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mc-trainer-row label {
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 60px;
+}
+
+.mc-trainer-select {
+  flex: 1;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.mc-trainer-toggle {
+  flex: 1;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.mc-trainer-toggle.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.mc-trainer-toggle.muted { opacity: 0.4; }
+
+.mc-trainer-library { margin-top: 8px; }
+
+.mc-trainer-library-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.mc-trainer-library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.mc-trainer-library-empty {
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.mc-trainer-library-item {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mc-trainer-library-item.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+
 .mirror-client-header {
   display: flex;
   justify-content: space-between;

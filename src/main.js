@@ -14,9 +14,9 @@ const views = {
   songs: {
     el: document.getElementById('songsView'),
     mount: (el) => mountSongs(el, {
-      onLoadSong: ({ name, bytes }) => {
+      onLoadSong: ({ id, name, bytes }) => {
         ensureMounted('trainer');
-        views.trainer.handle?.loadSongBytes?.(name, bytes);
+        views.trainer.handle?.loadSongBytes?.(name, bytes, { id, source: 'library' });
         setMode('trainer');
       },
     }),
