@@ -25,7 +25,14 @@ const TEMPLATE = `
 
     <div class="bank-bar" data-role="bank-bar"></div>
     <div class="patch-list" data-role="patch-list"></div>
-    <div class="mirror-client-footer" data-role="footer">Waiting for host…</div>
+    <div class="mirror-client-waiting" data-role="waiting">
+      <div class="mirror-client-waiting-title">Waiting for host…</div>
+      <div class="mirror-client-waiting-help">
+        Open the Controller tab on your laptop and click <b>START MIRRORING</b>
+        in Settings. If you just reloaded this page, give it a second.
+      </div>
+    </div>
+    <div class="mirror-client-footer" data-role="footer">Connecting…</div>
   </div>
 `;
 
@@ -62,7 +69,21 @@ export function mountMirrorClient(root, code) {
   });
 
   function render() {
-    if (!state) return;
+    const waitingEl = $('[data-role="waiting"]');
+    const lcdEl = root.querySelector('.mirror-client-lcd');
+    const bankBarEl = $('[data-role="bank-bar"]');
+    const patchListEl = $('[data-role="patch-list"]');
+    if (!state) {
+      waitingEl.classList.remove('hidden');
+      lcdEl.classList.add('hidden');
+      bankBarEl.classList.add('hidden');
+      patchListEl.classList.add('hidden');
+      return;
+    }
+    waitingEl.classList.add('hidden');
+    lcdEl.classList.remove('hidden');
+    bankBarEl.classList.remove('hidden');
+    patchListEl.classList.remove('hidden');
     const bank = profile.banks[state.bankIndex];
     const patches = bank?.patches || [];
     const patch = patches[state.patchIndex];

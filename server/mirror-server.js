@@ -64,7 +64,7 @@ wss.on('connection', (ws) => {
     if (msg.type === 'host') {
       if (ws.role) return;
       const code = newCode();
-      const room = { host: ws, clients: new Set(), lastActivity: Date.now() };
+      const room = { host: ws, clients: new Set(), lastState: null, lastActivity: Date.now() };
       rooms.set(code, room);
       ws.role = 'host';
       ws.code = code;
@@ -86,6 +86,9 @@ wss.on('connection', (ws) => {
       room.clients.add(ws);
       touch(room);
       send(ws, { type: 'joined', code });
+      // Replay the most recent host snapshot so a late-joining client
+      // sees the current state instead of a blank view.
+      if (room.lastState) send(ws, { type: 'state', payload: room.lastState });
       send(room.host, { type: 'peer-joined' });
       return;
     }
@@ -94,6 +97,7 @@ wss.on('connection', (ws) => {
       const room = rooms.get(ws.code);
       if (!room) return;
       touch(room);
+      room.lastState = msg.payload;
       broadcastToClients(room, { type: 'state', payload: msg.payload }, ws);
       return;
     }
