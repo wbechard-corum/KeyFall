@@ -182,13 +182,16 @@ export function mountTrainer(root) {
       try {
         const song = parseMIDI(bytes);
         song.name = displayName;
-        onSongLoaded(song);
+        onSongLoaded(song, { source: 'adhoc' });
       } catch (err) {
         alert('Error parsing MIDI file: ' + err.message);
         return;
       }
       try {
-        await saveSong({ name: displayName, bytes });
+        const record = await saveSong({ name: displayName, bytes });
+        // Promote ad-hoc to library so mirror clients can fetch it by id.
+        currentSongMeta = { ...currentSongMeta, id: record.id, source: 'library' };
+        publishTrainerState();
       } catch (err) {
         console.warn('Failed to save to library:', err);
       }
@@ -339,6 +342,8 @@ export function mountTrainer(root) {
       trackMuted: [...playback.state.trackMuted],
       waitingForNote: playback.state.waitingForNote?.midi ?? null,
       midiOutEnabled,
+      pressedKeys: [...pressedKeys],
+      serverTime: performance.now(),
     });
   }
 

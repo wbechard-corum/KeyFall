@@ -1,5 +1,9 @@
 import { createMirrorClient } from '../shared/mirror.js';
 import { loadProfile, loadDefaultProfile } from '../controller/profile-loader.js';
+import { createRenderer } from '../trainer/renderer.js';
+import { parseMIDI } from '../midi/parser.js';
+import { DEMOS } from '../trainer/demos.js';
+import { getSong } from '../trainer/library.js';
 
 const TEMPLATE = `
   <div class="mirror-client-root">
@@ -52,6 +56,10 @@ const TEMPLATE = `
       <div class="mc-panel hidden" data-panel="trainer">
         <div class="mc-trainer" data-role="trainer">
           <div class="mc-trainer-song" data-role="trainer-song">No song loaded</div>
+          <div class="mc-trainer-canvas-wrap" data-role="trainer-canvas-wrap">
+            <canvas data-role="trainer-canvas"></canvas>
+            <div class="mc-trainer-canvas-empty hidden" data-role="trainer-canvas-empty">No song yet</div>
+          </div>
           <div class="mc-trainer-progress" data-role="trainer-progress-track">
             <div class="mc-trainer-progress-fill" data-role="trainer-progress-fill"></div>
           </div>
@@ -155,6 +163,11 @@ export function mountMirrorClient(root, code) {
         lastControlsProfile = null;
         channelBuilt = false;
       }
+      const t = payload.trainer;
+      if (t) {
+        updateLocalClockFromState(t);
+        syncClientSong(t.song);
+      }
       render();
     },
     onHostGone: () => {
@@ -166,7 +179,13 @@ export function mountMirrorClient(root, code) {
     activeTab = tab;
     $$('.mc-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     $$('.mc-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tab));
-    if (tab === 'trainer') refreshTrainerLibrary();
+    if (tab === 'trainer') {
+      refreshTrainerLibrary();
+      ensureTrainerRenderer();
+      startCanvasLoop();
+    } else {
+      stopCanvasLoop();
+    }
     if (state) render();
   }
 
@@ -201,6 +220,127 @@ export function mountMirrorClient(root, code) {
     if (activeTab === 'controls') renderControls();
     if (activeTab === 'channel') renderChannel();
     if (activeTab === 'trainer') renderTrainer();
+  }
+
+  // ─── Client-side trainer canvas ───
+
+  let trainerRenderer = null;
+  let trainerCanvas = null;
+  let currentClientSong = null;        // parsed song currently loaded client-side
+  let currentClientSongKey = null;     // 'lib:<id>' or 'demo:<id>' — invalidates reload
+  let songLoadInFlight = null;
+  let localClock = {
+    currentTime: 0,
+    lastHostUpdate: 0,    // performance.now() when we received host state
+    hostTime: 0,          // host's reported currentTime at that moment
+    playing: false,
+    speed: 1,
+  };
+  let canvasRafId = null;
+
+  function ensureTrainerRenderer() {
+    if (trainerRenderer) return;
+    trainerCanvas = $('[data-role="trainer-canvas"]');
+    if (!trainerCanvas) return;
+    trainerRenderer = createRenderer(trainerCanvas);
+    trainerRenderer.resize();
+    const wrap = $('[data-role="trainer-canvas-wrap"]');
+    new ResizeObserver(() => {
+      trainerRenderer?.resize();
+      renderClientCanvas();
+    }).observe(wrap);
+  }
+
+  async function syncClientSong(meta) {
+    if (!meta) { currentClientSong = null; currentClientSongKey = null; return; }
+    const key = meta.id ? `lib:${meta.id}` : meta.demoId ? `demo:${meta.demoId}` : null;
+    if (!key) {
+      currentClientSong = null;
+      currentClientSongKey = null;
+      return;
+    }
+    if (key === currentClientSongKey) return;
+    // Cancel any in-flight fetch for a different song so we don't flip-flop.
+    const myKey = key;
+    songLoadInFlight = myKey;
+    try {
+      if (meta.id) {
+        const record = await getSong(meta.id);
+        if (songLoadInFlight !== myKey) return;
+        if (record) {
+          const song = parseMIDI(record.bytes);
+          song.name = meta.name;
+          currentClientSong = song;
+          currentClientSongKey = key;
+        }
+      } else if (meta.demoId && DEMOS[meta.demoId]) {
+        const song = DEMOS[meta.demoId].build();
+        if (songLoadInFlight !== myKey) return;
+        currentClientSong = song;
+        currentClientSongKey = key;
+      }
+    } catch (err) {
+      console.warn('Client song load failed:', err);
+      currentClientSong = null;
+      currentClientSongKey = null;
+    } finally {
+      if (songLoadInFlight === myKey) songLoadInFlight = null;
+    }
+  }
+
+  function updateLocalClockFromState(t) {
+    if (!t) return;
+    localClock = {
+      currentTime: t.currentTime || 0,
+      lastHostUpdate: performance.now(),
+      hostTime: t.currentTime || 0,
+      playing: !!t.playing,
+      speed: t.speed ?? 1,
+    };
+  }
+
+  function interpolateTime() {
+    if (!localClock.playing) return localClock.hostTime;
+    const elapsed = (performance.now() - localClock.lastHostUpdate) / 1000;
+    return localClock.hostTime + elapsed * localClock.speed;
+  }
+
+  function renderClientCanvas() {
+    if (!trainerRenderer) return;
+    const t = state?.trainer;
+    if (!t || !currentClientSong) {
+      trainerRenderer.render({
+        song: null,
+        currentTime: 0,
+        pressedKeys: new Set(),
+        trackMuted: [false, false],
+        isPlaying: false,
+      });
+      return;
+    }
+    const time = interpolateTime();
+    trainerRenderer.render({
+      song: currentClientSong,
+      currentTime: time,
+      pressedKeys: new Set(t.pressedKeys || []),
+      trackMuted: t.trackMuted || [false, false],
+      isPlaying: t.playing,
+    });
+  }
+
+  function startCanvasLoop() {
+    if (canvasRafId) return;
+    const tick = () => {
+      renderClientCanvas();
+      if (activeTab === 'trainer') canvasRafId = requestAnimationFrame(tick);
+      else canvasRafId = null;
+    };
+    canvasRafId = requestAnimationFrame(tick);
+  }
+
+  function stopCanvasLoop() {
+    if (canvasRafId) cancelAnimationFrame(canvasRafId);
+    canvasRafId = null;
   }
 
   let librarySnapshot = [];
@@ -260,7 +400,21 @@ export function mountMirrorClient(root, code) {
     const song = t.song || {};
     const name = song.name || 'No song loaded';
     const total = song.duration || 0;
-    const current = t.currentTime || 0;
+    const current = interpolateTime();
+
+    const emptyEl = $('[data-role="trainer-canvas-empty"]');
+    if (!currentClientSong) {
+      emptyEl.classList.remove('hidden');
+      if (song.source === 'adhoc' && !song.id) {
+        emptyEl.textContent = 'Saving song — canvas will appear shortly.';
+      } else if (song.id || song.demoId) {
+        emptyEl.textContent = 'Loading song…';
+      } else {
+        emptyEl.textContent = 'No song yet';
+      }
+    } else {
+      emptyEl.classList.add('hidden');
+    }
 
     $('[data-role="trainer-song"]').textContent = `${name}${song.notes ? ` · ${song.notes} notes` : ''}`;
     const pct = total > 0 ? Math.min(100, (current / total) * 100) : 0;
@@ -410,6 +564,9 @@ export function mountMirrorClient(root, code) {
   }
 
   return {
-    destroy() { client.close(); },
+    destroy() {
+      stopCanvasLoop();
+      client.close();
+    },
   };
 }

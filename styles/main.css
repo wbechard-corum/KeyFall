@@ -844,6 +844,35 @@ canvas { display: block; width: 100%; height: 100%; }
   text-align: center;
 }
 
+.mc-trainer-canvas-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  height: min(50vh, 480px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mc-trainer-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mc-trainer-canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-style: italic;
+  background: rgba(12, 12, 15, 0.8);
+}
+
 .mc-trainer-progress {
   height: 10px;
   background: var(--surface-2);
