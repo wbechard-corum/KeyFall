@@ -266,6 +266,216 @@ export function mountMirrorClient(root, code) {
     if (activeTab === 'effects') renderEffects();
     if (activeTab === 'controls') renderControls();
     if (activeTab === 'live') renderTrainer();
+    if (activeTab === 'songs') renderSongsTab();
+    if (activeTab === 'settings') renderSettingsTab();
+  }
+
+  // ─── Songs tab ───
+  let songsBuilt = false;
+  let songsFilter = '';
+
+  function renderSongsTab() {
+    const host = $('[data-role="songs"]');
+    if (!songsBuilt) {
+      host.innerHTML = `
+        <div class="mc-songs-controls">
+          <input class="mc-songs-search" type="search" placeholder="Search songs…" data-role="songs-search">
+        </div>
+        <div class="mc-songs-list" data-role="songs-list"></div>
+        <button class="mc-songs-load" data-role="songs-load">▶ LOAD ON HOST</button>
+      `;
+      host.querySelector('[data-role="songs-search"]').addEventListener('input', (e) => {
+        songsFilter = (e.target.value || '').toLowerCase();
+        renderSongsList();
+      });
+      host.querySelector('[data-role="songs-load"]').addEventListener('click', () => {
+        if (songsSelected != null) {
+          client.sendCommand({ target: 'trainer', action: 'loadSongById', args: [songsSelected] });
+        }
+      });
+      songsBuilt = true;
+      refreshTrainerLibrary();
+    }
+    renderSongsList();
+  }
+
+  let songsSelected = null;
+
+  function renderSongsList() {
+    const list = $('[data-role="songs-list"]');
+    if (!list) return;
+    list.innerHTML = '';
+    const filtered = librarySnapshot.filter(r => !songsFilter || r.name.toLowerCase().includes(songsFilter));
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'mc-songs-empty';
+      empty.textContent = songsFilter ? 'No matches.' : 'No songs uploaded yet.';
+      list.appendChild(empty);
+      return;
+    }
+    for (const row of filtered) {
+      const btn = document.createElement('button');
+      btn.className = 'mc-songs-item' + (songsSelected === row.id ? ' active' : '');
+      btn.innerHTML = `
+        <span class="mc-songs-item-name">${escapeHtml(row.name)}</span>
+        <span class="mc-songs-item-meta">${formatSize(row.size)}</span>
+      `;
+      btn.addEventListener('click', () => {
+        songsSelected = row.id;
+        renderSongsList();
+      });
+      btn.addEventListener('dblclick', () => {
+        client.sendCommand({ target: 'trainer', action: 'loadSongById', args: [row.id] });
+      });
+      list.appendChild(btn);
+    }
+  }
+
+  function formatSize(n) {
+    if (!n) return '';
+    if (n < 1024) return `${n}B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}K`;
+    return `${(n / 1024 / 1024).toFixed(1)}M`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ─── Settings tab ───
+  let settingsBuilt = false;
+
+  function renderSettingsTab() {
+    const host = $('[data-role="settings"]');
+    if (!settingsBuilt) {
+      host.innerHTML = `
+        <div class="mc-set-section-label">MIDI</div>
+        <div class="mc-set-card">
+          <div class="mc-set-row">
+            <div class="mc-set-row-main">
+              <div class="mc-set-row-label">MIDI Out</div>
+              <div class="mc-set-row-hint" data-role="midi-out-hint">HOST HANDLES MIDI OUTPUT</div>
+            </div>
+            <button class="mc-set-toggle" data-role="midi-out-toggle"></button>
+          </div>
+          <div class="mc-set-row" data-role="channel-row">
+            <div class="mc-set-row-main">
+              <div class="mc-set-row-label">Channel</div>
+              <div class="mc-set-row-hint">OUTBOUND MIDI CHANNEL</div>
+            </div>
+            <select class="mc-set-select" data-role="channel-select"></select>
+          </div>
+        </div>
+
+        <div class="mc-set-section-label">DISPLAY</div>
+        <div class="mc-set-card">
+          <div class="mc-set-row">
+            <div class="mc-set-row-main">
+              <div class="mc-set-row-label">Keyboard size</div>
+              <div class="mc-set-row-hint">VISIBLE KEY RANGE</div>
+            </div>
+            <select class="mc-set-select" data-role="keys-select"></select>
+          </div>
+          <div class="mc-set-row">
+            <div class="mc-set-row-main">
+              <div class="mc-set-row-label">Note labels</div>
+              <div class="mc-set-row-hint">SHOW NAMES ON FALLING NOTES</div>
+            </div>
+            <select class="mc-set-select" data-role="labels-select">
+              <option value="none">None</option>
+              <option value="c-only">C keys only</option>
+              <option value="all">All notes</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="mc-set-section-label">DEVICE</div>
+        <div class="mc-set-card">
+          <div class="mc-set-row">
+            <div class="mc-set-row-main">
+              <div class="mc-set-row-label">Keep screen awake</div>
+              <div class="mc-set-row-hint">DISABLE AUTO-LOCK WHILE CONNECTED</div>
+            </div>
+            <button class="mc-set-toggle" data-role="awake-toggle"></button>
+          </div>
+          <div class="mc-set-row">
+            <div class="mc-set-row-main">
+              <div class="mc-set-row-label">Haptics</div>
+              <div class="mc-set-row-hint">VIBRATE ON PATCH CHANGE</div>
+            </div>
+            <button class="mc-set-toggle" data-role="haptics-toggle"></button>
+          </div>
+        </div>
+
+        <div class="mc-set-footer" data-role="set-footer"></div>
+      `;
+
+      // Keyboard range options
+      const keysSel = host.querySelector('[data-role="keys-select"]');
+      for (const n of [25,37,49,61,76,88]) {
+        const opt = document.createElement('option');
+        opt.value = n;
+        opt.textContent = `${n} keys`;
+        keysSel.appendChild(opt);
+      }
+      keysSel.addEventListener('change', (e) => applyKeyboardRange(Number(e.target.value) || 88));
+
+      const labelsSel = host.querySelector('[data-role="labels-select"]');
+      labelsSel.addEventListener('change', (e) => {
+        updateSettings({ labelMode: e.target.value });
+        // Renderer re-reads on next canvas tick via the config closure.
+        renderClientCanvas();
+      });
+
+      // Channel dropdown
+      const chSel = host.querySelector('[data-role="channel-select"]');
+      for (let i = 0; i < 16; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `Ch ${i + 1}`;
+        chSel.appendChild(opt);
+      }
+      chSel.addEventListener('change', (e) => {
+        client.sendCommand({ target: 'controller', action: 'setChannel', args: [Number(e.target.value)] });
+      });
+
+      host.querySelector('[data-role="midi-out-toggle"]').addEventListener('click', () => {
+        const nextOn = !state?.trainer?.midiOutEnabled;
+        client.sendCommand({ target: 'trainer', action: 'setMidiOut', args: [nextOn] });
+      });
+
+      host.querySelector('[data-role="awake-toggle"]').addEventListener('click', () => {
+        const next = !getSetting('remoteKeepAwake');
+        updateSettings({ remoteKeepAwake: next });
+        // keepAwake is already requested on mount; toggle only controls
+        // whether we re-acquire on visibility change. Future work: a
+        // proper release path.
+      });
+      host.querySelector('[data-role="haptics-toggle"]').addEventListener('click', () => {
+        updateSettings({ remoteHaptics: !getSetting('remoteHaptics') });
+      });
+
+      settingsBuilt = true;
+    }
+
+    // Sync current values
+    const s = getSettings();
+    const midiOut = !!state?.trainer?.midiOutEnabled;
+    $('[data-role="midi-out-toggle"]').classList.toggle('on', midiOut);
+    $('[data-role="midi-out-hint"]').textContent = midiOut
+      ? 'REMOTE IS ACTIVE MIDI SOURCE'
+      : 'HOST HANDLES MIDI OUTPUT';
+    const chRow = $('[data-role="channel-row"]');
+    chRow.classList.toggle('disabled', !midiOut);
+    $('[data-role="channel-select"]').value = String(state?.controller?.channel ?? 0);
+
+    $('[data-role="keys-select"]').value = String(s.keyboardRange || 88);
+    $('[data-role="labels-select"]').value = s.labelMode || 'c-only';
+    $('[data-role="awake-toggle"]').classList.toggle('on', s.remoteKeepAwake !== false);
+    $('[data-role="haptics-toggle"]').classList.toggle('on', !!s.remoteHaptics);
+
+    $('[data-role="set-footer"]').textContent =
+      `Paired with KeyFall v${__APP_VERSION__} · Code #${code} · Tap the code above to disconnect`;
   }
 
   // ─── Client-side trainer canvas ───
