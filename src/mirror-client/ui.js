@@ -10,25 +10,21 @@ import { getSetting, updateSettings } from '../shared/settings.js';
 const TEMPLATE = `
   <div class="mirror-client-root">
     <div class="mirror-client-header">
-      <div>
-        <div class="mirror-client-brand">KeyFall Remote <span class="mirror-client-version" data-role="version"></span></div>
-        <div class="mirror-client-status" data-role="status">Connecting…</div>
+      <div class="mirror-client-brand-col">
+        <div class="mirror-client-brand">
+          <span class="mirror-client-brand-badge">K</span>
+          KeyFall Remote
+          <span class="mirror-client-version" data-role="version"></span>
+        </div>
+        <div class="mirror-client-status" data-role="status">● CONNECTING…</div>
       </div>
       <div class="mirror-client-header-right">
-        <select class="mirror-client-keys" data-role="header-keys" title="Keyboard size">
-          <option value="88">88 keys</option>
-          <option value="76">76 keys</option>
-          <option value="61">61 keys</option>
-          <option value="49">49 keys</option>
-          <option value="37">37 keys</option>
-          <option value="25">25 keys</option>
-        </select>
         <div class="mirror-client-code" data-role="code">------</div>
       </div>
     </div>
 
     <div class="mirror-client-body" data-role="body">
-      <div class="mirror-client-lcd">
+      <div class="mirror-client-lcd" data-role="patch-card">
         <div class="lcd-row">
           <span class="lcd-label" data-role="lcd-bank">—</span>
           <span class="lcd-label" data-role="lcd-patch-num">000/000</span>
@@ -41,14 +37,15 @@ const TEMPLATE = `
       </div>
 
       <div class="mirror-client-tabs">
-        <button class="mc-tab active" data-tab="patches">PATCHES</button>
+        <button class="mc-tab active" data-tab="live">LIVE</button>
+        <button class="mc-tab" data-tab="songs">SONGS</button>
+        <button class="mc-tab" data-tab="patches">PATCHES</button>
         <button class="mc-tab" data-tab="effects">EFFECTS</button>
         <button class="mc-tab" data-tab="controls">CONTROLS</button>
-        <button class="mc-tab" data-tab="channel">CHANNEL</button>
-        <button class="mc-tab" data-tab="trainer">TRAINER</button>
+        <button class="mc-tab" data-tab="settings">SETTINGS</button>
       </div>
 
-      <div class="mc-panel" data-panel="patches">
+      <div class="mc-panel hidden" data-panel="patches">
         <div class="bank-bar" data-role="bank-bar"></div>
         <div class="patch-list" data-role="patch-list"></div>
       </div>
@@ -61,11 +58,15 @@ const TEMPLATE = `
         <div class="mc-controls" data-role="controls"></div>
       </div>
 
-      <div class="mc-panel hidden" data-panel="channel">
-        <div class="mc-channel" data-role="channel-grid"></div>
+      <div class="mc-panel hidden" data-panel="songs">
+        <div class="mc-songs" data-role="songs"></div>
       </div>
 
-      <div class="mc-panel hidden" data-panel="trainer">
+      <div class="mc-panel hidden" data-panel="settings">
+        <div class="mc-settings" data-role="settings"></div>
+      </div>
+
+      <div class="mc-panel" data-panel="live">
         <div class="mc-trainer" data-role="trainer">
           <div class="mc-trainer-song" data-role="trainer-song">No song loaded</div>
           <div class="mc-trainer-canvas-wrap" data-role="trainer-canvas-wrap">
@@ -152,16 +153,12 @@ export function mountMirrorClient(root, code) {
     if (headSel) headSel.value = String(v);
   }
 
-  // Header Keys select is always visible and works pre-renderer.
-  const headerKeys = $('[data-role="header-keys"]');
-  headerKeys.value = String(getSetting('keyboardRange') || 88);
-  headerKeys.addEventListener('change', (e) => {
-    applyKeyboardRange(Number(e.target.value) || 88);
-  });
+  // applyKeyboardRange is called from the SETTINGS tab's Keys
+  // dropdown once it's built (see Phase 5 wiring).
 
   let state = null;
   let profile = loadDefaultProfile();
-  let activeTab = 'patches';
+  let activeTab = 'live';
   let lastRenderedProfile = null;
   let lastRenderedBank = null;
   let lastEffectsProfile = null;
@@ -191,11 +188,13 @@ export function mountMirrorClient(root, code) {
   const client = createMirrorClient(code, {
     onStatus: (st) => {
       const statusEl = $('[data-role="status"]');
-      if (st.state === 'connecting') statusEl.textContent = 'Connecting…';
-      else if (st.state === 'connected') statusEl.textContent = 'Connected';
-      else if (st.state === 'host-gone') statusEl.textContent = 'Host disconnected';
-      else if (st.state === 'error') statusEl.textContent = `Error: ${st.reason || 'unknown'}`;
-      else if (st.state === 'disconnected') statusEl.textContent = 'Reconnecting…';
+      const label = (st.state === 'connected' || st.state === 'joined') ? '● CONNECTED'
+        : st.state === 'host-gone' ? '○ HOST DISCONNECTED'
+        : st.state === 'error' ? `○ ERROR: ${(st.reason || '').toUpperCase()}`
+        : st.state === 'disconnected' ? '○ RECONNECTING…'
+        : '○ CONNECTING…';
+      statusEl.textContent = label;
+      statusEl.classList.toggle('connected', st.state === 'connected' || st.state === 'joined');
     },
     onState: (payload) => {
       state = payload;
@@ -224,7 +223,10 @@ export function mountMirrorClient(root, code) {
     activeTab = tab;
     $$('.mc-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     $$('.mc-panel').forEach(p => p.classList.toggle('hidden', p.dataset.panel !== tab));
-    if (tab === 'trainer') {
+    // Patch card (LCD) is only shown on LIVE — it's context for playing,
+    // not for config.
+    $('[data-role="patch-card"]').classList.toggle('hidden', tab !== 'live');
+    if (tab === 'live') {
       refreshTrainerLibrary();
       ensureTrainerRenderer();
       startCanvasLoop();
@@ -263,8 +265,7 @@ export function mountMirrorClient(root, code) {
     if (activeTab === 'patches') { renderBankBar(); renderPatchList(); }
     if (activeTab === 'effects') renderEffects();
     if (activeTab === 'controls') renderControls();
-    if (activeTab === 'channel') renderChannel();
-    if (activeTab === 'trainer') renderTrainer();
+    if (activeTab === 'live') renderTrainer();
   }
 
   // ─── Client-side trainer canvas ───
@@ -439,7 +440,7 @@ export function mountMirrorClient(root, code) {
     if (canvasRafId) return;
     const tick = () => {
       renderClientCanvas();
-      if (activeTab === 'trainer') canvasRafId = requestAnimationFrame(tick);
+      if (activeTab === 'live') canvasRafId = requestAnimationFrame(tick);
       else canvasRafId = null;
     };
     canvasRafId = requestAnimationFrame(tick);
