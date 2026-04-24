@@ -2,6 +2,7 @@ import { requestAccess, onStateChange, autoSelect } from './midi/connection.js';
 import { mountTrainer } from './trainer/ui.js';
 import { mountController } from './controller/ui.js';
 import { mountSongs } from './songs/ui.js';
+import { mountSettings } from './settings/ui.js';
 import { mountMirrorClient } from './mirror-client/ui.js';
 import { getSettings, updateSettings } from './shared/settings.js';
 import { keepAwake } from './shared/wake-lock.js';
@@ -26,6 +27,11 @@ const views = {
   controller: {
     el: document.getElementById('controllerView'),
     mount: (el) => mountController(el),
+    handle: null,
+  },
+  settings: {
+    el: document.getElementById('settingsView'),
+    mount: (el) => mountSettings(el),
     handle: null,
   },
 };

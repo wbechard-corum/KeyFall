@@ -18,9 +18,10 @@
   <nav class="mode-nav" id="modeNav">
     <div class="mode-brand">KeyFall<span id="appVersion"></span></div>
     <div class="mode-tabs">
-      <button class="mode-tab active" data-mode="trainer">TRAINER</button>
+      <button class="mode-tab active" data-mode="trainer">LIVE</button>
       <button class="mode-tab" data-mode="songs">SONGS</button>
-      <button class="mode-tab" data-mode="controller">CONTROLLER</button>
+      <button class="mode-tab" data-mode="controller">PATCHES</button>
+      <button class="mode-tab" data-mode="settings">SETTINGS</button>
     </div>
     <button class="mode-remote" id="modeRemote" title="Use this device as a remote for another KeyFall session">REMOTE</button>
     <div class="mode-midi">
@@ -32,6 +33,7 @@
   <section class="mode-view" id="trainerView"></section>
   <section class="mode-view hidden" id="songsView"></section>
   <section class="mode-view hidden" id="controllerView"></section>
+  <section class="mode-view hidden" id="settingsView"></section>
 
   <div class="remote-modal hidden" id="remoteModal">
     <div class="remote-modal-backdrop" data-role="backdrop"></div>
