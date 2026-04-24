@@ -91,7 +91,7 @@ const TEMPLATE = `
 
     <div class="footer">
       <span><span class="midi-activity" data-role="midi-led"></span>MIDI <span data-role="footer-status">IDLE</span></span>
-      <span>v0.2</span>
+      <span data-role="footer-version"></span>
     </div>
   </div>
 `;
@@ -108,6 +108,7 @@ export function mountController(root) {
 
   buildProfileSelect();
   buildChannelOptions();
+  $('[data-role="footer-version"]').textContent = `v${__APP_VERSION__}`;
   const unsubscribeTx = onTx(() => flashLed());
 
   $$('[data-tab]').forEach(btn => {

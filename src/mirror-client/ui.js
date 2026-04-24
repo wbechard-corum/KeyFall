@@ -11,7 +11,7 @@ const TEMPLATE = `
   <div class="mirror-client-root">
     <div class="mirror-client-header">
       <div>
-        <div class="mirror-client-brand">KeyFall Remote</div>
+        <div class="mirror-client-brand">KeyFall Remote <span class="mirror-client-version" data-role="version"></span></div>
         <div class="mirror-client-status" data-role="status">Connecting…</div>
       </div>
       <div class="mirror-client-code" data-role="code">------</div>
@@ -126,6 +126,7 @@ export function mountMirrorClient(root, code) {
   const $ = (sel) => root.querySelector(sel);
   const $$ = (sel) => root.querySelectorAll(sel);
   $('[data-role="code"]').textContent = `#${code}`;
+  $('[data-role="version"]').textContent = `v${__APP_VERSION__}`;
 
   let state = null;
   let profile = loadDefaultProfile();

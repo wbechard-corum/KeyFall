@@ -166,7 +166,13 @@ function setupRemoteModal() {
   });
 }
 
+function showVersion() {
+  const el = document.getElementById('appVersion');
+  if (el) el.textContent = `v${__APP_VERSION__}`;
+}
+
 function boot() {
+  showVersion();
   const code = parseMirrorCode();
   if (code) {
     bootMirrorClient(code);
