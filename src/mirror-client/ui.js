@@ -14,7 +14,17 @@ const TEMPLATE = `
         <div class="mirror-client-brand">KeyFall Remote <span class="mirror-client-version" data-role="version"></span></div>
         <div class="mirror-client-status" data-role="status">Connecting…</div>
       </div>
-      <div class="mirror-client-code" data-role="code">------</div>
+      <div class="mirror-client-header-right">
+        <select class="mirror-client-keys" data-role="header-keys" title="Keyboard size">
+          <option value="88">88 keys</option>
+          <option value="76">76 keys</option>
+          <option value="61">61 keys</option>
+          <option value="49">49 keys</option>
+          <option value="37">37 keys</option>
+          <option value="25">25 keys</option>
+        </select>
+        <div class="mirror-client-code" data-role="code">------</div>
+      </div>
     </div>
 
     <div class="mirror-client-body" data-role="body">
@@ -127,6 +137,27 @@ export function mountMirrorClient(root, code) {
   const $$ = (sel) => root.querySelectorAll(sel);
   $('[data-role="code"]').textContent = `#${code}`;
   $('[data-role="version"]').textContent = `v${__APP_VERSION__}`;
+
+  function applyKeyboardRange(v) {
+    updateSettings({ keyboardRange: v });
+    if (trainerRenderer) {
+      trainerRenderer.setKeyboardRange(v);
+      trainerRenderer.resize();
+      renderClientCanvas();
+    }
+    // Keep the in-tab Keys select in sync if it's been built.
+    const tabSel = $('[data-action="keys"]');
+    if (tabSel) tabSel.value = String(v);
+    const headSel = $('[data-role="header-keys"]');
+    if (headSel) headSel.value = String(v);
+  }
+
+  // Header Keys select is always visible and works pre-renderer.
+  const headerKeys = $('[data-role="header-keys"]');
+  headerKeys.value = String(getSetting('keyboardRange') || 88);
+  headerKeys.addEventListener('change', (e) => {
+    applyKeyboardRange(Number(e.target.value) || 88);
+  });
 
   let state = null;
   let profile = loadDefaultProfile();
@@ -266,11 +297,7 @@ export function mountMirrorClient(root, code) {
     if (keysSelect) {
       keysSelect.value = String(getSetting('keyboardRange') || 88);
       keysSelect.addEventListener('change', (e) => {
-        const v = Number(e.target.value) || 88;
-        updateSettings({ keyboardRange: v });
-        trainerRenderer.setKeyboardRange(v);
-        trainerRenderer.resize();
-        renderClientCanvas();
+        applyKeyboardRange(Number(e.target.value) || 88);
       });
     }
     const wrap = $('[data-role="trainer-canvas-wrap"]');
