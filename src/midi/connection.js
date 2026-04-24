@@ -87,16 +87,34 @@ export async function requestAccess({ sysex = true } = {}) {
   }
 }
 
+// Chrome WebMIDI ports start in connection="closed". Messages sent on a
+// closed port do trigger an implicit open, but the first few sends during
+// that transition can be silently dropped — which is why the app used to
+// only work reliably after the user hit SEND IDENTITY REQUEST (that first
+// sysex primed the port). Call .open() explicitly so every subsequent
+// send lands cleanly.
+function openPort(port) {
+  if (!port || typeof port.open !== 'function') return Promise.resolve();
+  if (port.connection === 'open') return Promise.resolve();
+  return Promise.resolve(port.open()).catch((e) => {
+    console.warn('MIDI port open failed:', e);
+  });
+}
+
 export function selectInput(id) {
   state.selectedInputId = id;
+  const port = getInputPort();
+  if (port) openPort(port);
   emit();
-  return getInputPort();
+  return port;
 }
 
 export function selectOutput(id) {
   state.selectedOutputId = id;
+  const port = getOutputPort();
+  if (port) openPort(port);
   emit();
-  return getOutputPort();
+  return port;
 }
 
 export function getInputPort() {

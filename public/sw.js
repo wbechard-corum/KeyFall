@@ -1,6 +1,6 @@
 // Network-first for the HTML shell so deploys reach users immediately.
 // Cache-first for hashed /assets/* since their URLs change every build.
-const CACHE = 'keyfall-v0.3';
+const CACHE = 'keyfall-v0.4';
 const SHELL = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
