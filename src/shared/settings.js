@@ -7,6 +7,7 @@ const DEFAULTS = {
   selectedProfileId: null,
   theme: 'dark',
   trainerMidiOut: false,
+  keyboardRange: 88,
 };
 
 function read() {

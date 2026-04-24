@@ -5,6 +5,7 @@ import { parseMIDI } from '../midi/parser.js';
 import { DEMOS } from '../trainer/demos.js';
 import { getSong } from '../trainer/library.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
+import { getSetting, updateSettings } from '../shared/settings.js';
 
 const TEMPLATE = `
   <div class="mirror-client-root">
@@ -88,6 +89,17 @@ const TEMPLATE = `
             <button class="mc-trainer-toggle" data-action="midi-out">MIDI OUT</button>
             <button class="mc-trainer-toggle" data-action="track-r">R</button>
             <button class="mc-trainer-toggle" data-action="track-l">L</button>
+          </div>
+          <div class="mc-trainer-row">
+            <label>Keys</label>
+            <select class="mc-trainer-select" data-action="keys">
+              <option value="88">88</option>
+              <option value="76">76</option>
+              <option value="61">61</option>
+              <option value="49">49</option>
+              <option value="37">37</option>
+              <option value="25">25</option>
+            </select>
           </div>
           <div class="mc-trainer-library">
             <div class="mc-trainer-library-title">Library</div>
@@ -246,7 +258,20 @@ export function mountMirrorClient(root, code) {
     trainerCanvas = $('[data-role="trainer-canvas"]');
     if (!trainerCanvas) return;
     trainerRenderer = createRenderer(trainerCanvas);
+    trainerRenderer.setKeyboardRange(Number(getSetting('keyboardRange') || 88));
     trainerRenderer.resize();
+
+    const keysSelect = $('[data-action="keys"]');
+    if (keysSelect) {
+      keysSelect.value = String(getSetting('keyboardRange') || 88);
+      keysSelect.addEventListener('change', (e) => {
+        const v = Number(e.target.value) || 88;
+        updateSettings({ keyboardRange: v });
+        trainerRenderer.setKeyboardRange(v);
+        trainerRenderer.resize();
+        renderClientCanvas();
+      });
+    }
     const wrap = $('[data-role="trainer-canvas-wrap"]');
     new ResizeObserver(() => {
       trainerRenderer?.resize();

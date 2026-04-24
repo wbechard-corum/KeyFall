@@ -1,20 +1,40 @@
 import { PIANO_MIN, PIANO_MAX, WHITE_NOTES, BLACK_NOTES } from './constants.js';
 
-export function computeKeyLayout(totalWidth) {
+// Standard keyboard sizes → MIDI range.
+export const KEYBOARD_RANGES = {
+  88: { min: 21, max: 108, label: '88 keys (A0–C8)' },   // Full piano
+  76: { min: 28, max: 103, label: '76 keys (E1–G7)' },
+  61: { min: 36, max: 96,  label: '61 keys (C2–C7)' },
+  49: { min: 36, max: 84,  label: '49 keys (C2–C6)' },
+  37: { min: 48, max: 84,  label: '37 keys (C3–C6)' },
+  25: { min: 60, max: 84,  label: '25 keys (C4–C6)' },
+};
+
+export function resolveRange(rangeOrObject) {
+  if (rangeOrObject && typeof rangeOrObject === 'object') {
+    return { min: rangeOrObject.min ?? PIANO_MIN, max: rangeOrObject.max ?? PIANO_MAX };
+  }
+  const r = KEYBOARD_RANGES[rangeOrObject];
+  return r ? { min: r.min, max: r.max } : { min: PIANO_MIN, max: PIANO_MAX };
+}
+
+export function computeKeyLayout(totalWidth, rangeOpt) {
+  const { min, max } = resolveRange(rangeOpt);
   const whiteKeyPositions = [];
   const blackKeyPositions = [];
   const allKeyPositions = new Array(128).fill(null);
 
   let whiteCount = 0;
-  for (let n = PIANO_MIN; n <= PIANO_MAX; n++) {
+  for (let n = min; n <= max; n++) {
     if (WHITE_NOTES.includes(n % 12)) whiteCount++;
   }
+  if (whiteCount === 0) whiteCount = 1;
 
   const whiteKeyWidth = totalWidth / whiteCount;
   const blackKeyWidth = whiteKeyWidth * 0.6;
 
   let wx = 0;
-  for (let n = PIANO_MIN; n <= PIANO_MAX; n++) {
+  for (let n = min; n <= max; n++) {
     if (WHITE_NOTES.includes(n % 12)) {
       const pos = { x: wx, w: whiteKeyWidth, note: n, black: false };
       whiteKeyPositions.push(pos);
@@ -23,7 +43,7 @@ export function computeKeyLayout(totalWidth) {
     }
   }
 
-  for (let n = PIANO_MIN; n <= PIANO_MAX; n++) {
+  for (let n = min; n <= max; n++) {
     if (BLACK_NOTES.includes(n % 12)) {
       const whiteBelow = allKeyPositions[n - 1];
       if (whiteBelow) {
@@ -35,7 +55,7 @@ export function computeKeyLayout(totalWidth) {
     }
   }
 
-  return { whiteKeyPositions, blackKeyPositions, allKeyPositions, whiteKeyWidth, blackKeyWidth };
+  return { whiteKeyPositions, blackKeyPositions, allKeyPositions, whiteKeyWidth, blackKeyWidth, range: { min, max } };
 }
 
 export function getNoteX(layout, midiNote) {

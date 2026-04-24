@@ -29,6 +29,7 @@ export function createRenderer(canvas) {
     noteAreaHeight: 0,
     layout: null,
     fallTimeSeconds: 3,
+    keyboardRange: 88,
   };
 
   function resize() {
@@ -44,7 +45,12 @@ export function createRenderer(canvas) {
 
     state.pianoHeight = Math.min(120, state.H * 0.18);
     state.noteAreaHeight = state.H - state.pianoHeight;
-    state.layout = computeKeyLayout(state.W);
+    state.layout = computeKeyLayout(state.W, state.keyboardRange);
+  }
+
+  function setKeyboardRange(range) {
+    state.keyboardRange = range;
+    if (state.W) state.layout = computeKeyLayout(state.W, state.keyboardRange);
   }
 
   function drawGrid() {
@@ -261,6 +267,7 @@ export function createRenderer(canvas) {
   return {
     resize,
     render,
+    setKeyboardRange,
     getState: () => state,
   };
 }

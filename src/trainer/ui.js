@@ -32,6 +32,18 @@ const TEMPLATE = `
       <button class="ctrl-btn" data-action="wait">WAIT</button>
       <button class="ctrl-btn" data-action="midi-out" title="Send notes to connected MIDI keyboard">MIDI OUT</button>
 
+      <div class="ctrl-group">
+        <span class="ctrl-label">KEYS</span>
+        <select class="ctrl-select" data-action="keys">
+          <option value="88">88</option>
+          <option value="76">76</option>
+          <option value="61">61</option>
+          <option value="49">49</option>
+          <option value="37">37</option>
+          <option value="25">25</option>
+        </select>
+      </div>
+
       <span class="spacer"></span>
 
       <div class="ctrl-label song-info" data-role="song-info">No song loaded</div>
@@ -249,6 +261,17 @@ export function mountTrainer(root) {
       setMidiOutEnabled(!e.currentTarget.classList.contains('active'));
     });
     if (midiOutEnabled) $('[data-action="midi-out"]').classList.add('active');
+
+    const keysSelect = $('[data-action="keys"]');
+    const savedRange = Number(getSetting('keyboardRange') || 88);
+    keysSelect.value = String(savedRange);
+    renderer.setKeyboardRange(savedRange);
+    keysSelect.addEventListener('change', (e) => {
+      const v = Number(e.target.value) || 88;
+      updateSettings({ keyboardRange: v });
+      renderer.setKeyboardRange(v);
+      render();
+    });
     $('[data-action="track-r"]').addEventListener('click', (e) => {
       const muted = playback.toggleTrackMuted(0);
       e.currentTarget.classList.toggle('muted', muted);
