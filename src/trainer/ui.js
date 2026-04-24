@@ -5,7 +5,7 @@ import { parseMIDI } from '../midi/parser.js';
 import { onNote as onMIDINote } from '../midi/input.js';
 import { sendNoteOn, sendNoteOff } from '../midi/output.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
-import { getSetting, updateSettings } from '../shared/settings.js';
+import { getSetting, getSettings, updateSettings, onSettingsChange } from '../shared/settings.js';
 import { setSection, setCommandHandler } from '../shared/app-mirror.js';
 import { getSong } from './library.js';
 import { DEMOS } from './demos.js';
@@ -272,6 +272,34 @@ export function mountTrainer(root) {
       renderer.setKeyboardRange(v);
       render();
     });
+
+    // Apply color + label-mode settings from storage and keep them
+    // in sync with changes made in the Settings tab.
+    function applyVisualSettings(s = getSettings()) {
+      renderer.setColors({
+        cKey: s.cKeyColor,
+        white: s.whiteKeyColor,
+        black: s.blackKeyColor,
+        right: s.rightHandColor,
+        left: s.leftHandColor,
+      });
+      renderer.setLabelMode(s.labelMode || 'c-only');
+    }
+    applyVisualSettings();
+    const unsubscribeSettings = onSettingsChange((s, patch) => {
+      const visualKeys = ['cKeyColor','whiteKeyColor','blackKeyColor',
+        'rightHandColor','leftHandColor','labelMode'];
+      if (visualKeys.some(k => k in patch)) {
+        applyVisualSettings(s);
+        render();
+      }
+      if ('keyboardRange' in patch) {
+        const nv = Number(s.keyboardRange) || 88;
+        keysSelect.value = String(nv);
+        renderer.setKeyboardRange(nv);
+        render();
+      }
+    });
     $('[data-action="track-r"]').addEventListener('click', (e) => {
       const muted = playback.toggleTrackMuted(0);
       e.currentTarget.classList.toggle('muted', muted);
@@ -476,6 +504,7 @@ export function mountTrainer(root) {
       clearInterval(tickInterval);
       resizeObserver.disconnect();
       unsubscribeMIDI();
+      unsubscribeSettings();
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('keydown', handleKeydown);
     },
