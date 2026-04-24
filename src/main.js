@@ -4,6 +4,7 @@ import { mountController } from './controller/ui.js';
 import { mountSongs } from './songs/ui.js';
 import { mountMirrorClient } from './mirror-client/ui.js';
 import { getSettings, updateSettings } from './shared/settings.js';
+import { keepAwake } from './shared/wake-lock.js';
 
 const views = {
   trainer: {
@@ -115,6 +116,9 @@ function bootMirrorClient(code) {
   app.innerHTML = '<section class="mode-view" id="mirrorClientView"></section>';
   const view = document.getElementById('mirrorClientView');
   mountMirrorClient(view, code);
+  // Entering a remote code is a user gesture; request the wake lock
+  // immediately so the iPad stays awake on the music stand.
+  keepAwake();
   registerServiceWorker();
 }
 
@@ -182,6 +186,17 @@ function boot() {
   setupModeSwitcher();
   setupMIDIStatus();
   setupRemoteModal();
+
+  // The Wake Lock API requires a recent user gesture. First tap or
+  // click anywhere in the app triggers the request once; subsequent
+  // visibility changes re-acquire automatically.
+  const armWakeLock = () => {
+    keepAwake();
+    document.removeEventListener('pointerdown', armWakeLock);
+    document.removeEventListener('keydown', armWakeLock);
+  };
+  document.addEventListener('pointerdown', armWakeLock, { once: true });
+  document.addEventListener('keydown', armWakeLock, { once: true });
 
   // Eagerly request MIDI (user can also trigger via tapping the status label).
   requestAccess({ sysex: true }).then(() => autoSelect({ preferManufacturer: 'Roland' }));
