@@ -10,21 +10,22 @@ export const BLACK_NOTES = [1, 3, 6, 8, 10];
 export const MIDDLE_C = 60;
 
 export const COLORS = {
-  rightHand: '#4FC3F7',
-  rightHandDim: 'rgba(79,195,247,0.15)',
-  rightHandGlow: 'rgba(79,195,247,0.4)',
-  leftHand: '#FF8A65',
-  leftHandDim: 'rgba(255,138,101,0.15)',
-  leftHandGlow: 'rgba(255,138,101,0.4)',
-  whiteKey: '#e8e8e8',
-  whiteKeyPressed: '#b0d8ff',
-  blackKey: '#1a1a1e',
-  blackKeyPressed: '#2a4a6a',
-  bg: '#0c0c0f',
+  rightHand: '#4dd6c3',
+  rightHandDim: 'rgba(77,214,195,0.15)',
+  rightHandGlow: 'rgba(77,214,195,0.5)',
+  leftHand: '#c89dff',
+  leftHandDim: 'rgba(200,157,255,0.15)',
+  leftHandGlow: 'rgba(200,157,255,0.5)',
+  whiteKey: '#eaeef2',
+  whiteKeyPressed: '#c9efe9',
+  blackKey: '#0a0c0f',
+  blackKeyPressed: '#1b4a44',
+  bg: '#0a0c0f',
   gridLine: 'rgba(255,255,255,0.03)',
   gridLineBeat: 'rgba(255,255,255,0.07)',
   hitLine: 'rgba(255,255,255,0.15)',
-  accent: '#FF7A1A',
+  accent: '#4dd6c3',
+  accentBright: '#6ae3d0',
 };
 
 export function midiNoteName(midi) {
