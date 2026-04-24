@@ -1,8 +1,9 @@
 import { getSettings, updateSettings, onSettingsChange } from '../shared/settings.js';
 import { KEYBOARD_RANGES } from '../shared/piano-keyboard.js';
 import { onStateChange, getState, selectInput, selectOutput, requestAccess } from '../midi/connection.js';
-import { IDENTITY_REQUEST } from '../midi/sysex.js';
+import { IDENTITY_REQUEST, parseIdentityReply } from '../midi/sysex.js';
 import { sendSysEx } from '../midi/output.js';
+import { onSysEx } from '../midi/input.js';
 import { availableProfiles, loadProfile } from '../controller/profile-loader.js';
 import {
   startMirror, stopMirror, isMirrorActive, onMirrorStatus,
@@ -160,6 +161,10 @@ export function mountSettings(root, { onProfileChange } = {}) {
   const unsubscribeMIDI = onStateChange(() => { renderDevices(); });
   const unsubscribeSettings = onSettingsChange(() => renderAll());
   const unsubscribeMirror = onMirrorStatus(renderMirror);
+  const unsubscribeSysEx = onSysEx((bytes) => {
+    const reply = parseIdentityReply(bytes);
+    if (reply) showIdentityReply(reply);
+  });
   renderDevices();
   renderMirror({ state: isMirrorActive() ? 'ready' : 'idle' });
 
@@ -326,12 +331,21 @@ export function mountSettings(root, { onProfileChange } = {}) {
 
   function sendIdentityRequest() {
     sendSysEx(IDENTITY_REQUEST);
-    // Result appears via the mirror/controller listeners; for the
-    // settings panel we just flash a placeholder so the user knows
-    // it went out. Live parsing lands when the sysex input wires
-    // into here too (out of scope for this phase).
     $('[data-role="identity-result-row"]').classList.remove('hidden');
-    $('[data-role="identity-result"]').textContent = 'Request sent — check Controller for the parsed reply.';
+    $('[data-role="identity-result"]').textContent = 'Waiting for reply…';
+  }
+
+  function formatPair(bytes) {
+    return bytes.map(b => b.toString(16).padStart(2, '0')).join(' ');
+  }
+
+  function showIdentityReply(reply) {
+    $('[data-role="identity-result-row"]').classList.remove('hidden');
+    $('[data-role="identity-result"]').textContent =
+      `Manufacturer: ${reply.manufacturerName}\n` +
+      `Family:       ${formatPair(reply.familyCode)}\n` +
+      `Model:        ${formatPair(reply.modelNumber)}\n` +
+      `Version:      ${reply.version.map(b => b.toString(16).padStart(2, '0')).join(' ')}`;
   }
 
   function toggleMirror() {
@@ -367,6 +381,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
       unsubscribeMIDI();
       unsubscribeSettings();
       unsubscribeMirror();
+      unsubscribeSysEx();
     },
     refresh() { renderAll(); renderDevices(); renderProfileNotes(); },
   };

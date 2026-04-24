@@ -398,13 +398,6 @@ export function mountMirrorClient(root, code) {
             </div>
             <button class="mc-set-toggle" data-role="awake-toggle"></button>
           </div>
-          <div class="mc-set-row">
-            <div class="mc-set-row-main">
-              <div class="mc-set-row-label">Haptics</div>
-              <div class="mc-set-row-hint">VIBRATE ON PATCH CHANGE</div>
-            </div>
-            <button class="mc-set-toggle" data-role="haptics-toggle"></button>
-          </div>
         </div>
 
         <div class="mc-set-footer" data-role="set-footer"></div>
@@ -451,9 +444,6 @@ export function mountMirrorClient(root, code) {
         // whether we re-acquire on visibility change. Future work: a
         // proper release path.
       });
-      host.querySelector('[data-role="haptics-toggle"]').addEventListener('click', () => {
-        updateSettings({ remoteHaptics: !getSetting('remoteHaptics') });
-      });
 
       settingsBuilt = true;
     }
@@ -472,7 +462,6 @@ export function mountMirrorClient(root, code) {
     $('[data-role="keys-select"]').value = String(s.keyboardRange || 88);
     $('[data-role="labels-select"]').value = s.labelMode || 'c-only';
     $('[data-role="awake-toggle"]').classList.toggle('on', s.remoteKeepAwake !== false);
-    $('[data-role="haptics-toggle"]').classList.toggle('on', !!s.remoteHaptics);
 
     $('[data-role="set-footer"]').textContent =
       `Paired with KeyFall v${__APP_VERSION__} · Code #${code} · Tap the code above to disconnect`;

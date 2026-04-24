@@ -2,11 +2,8 @@ import { createController } from './controller.js';
 import { mountEffects, mountControls } from './effects-ui.js';
 import { availableProfiles } from './profile-loader.js';
 import { onTx } from '../midi/output.js';
-import { onStateChange, getState, selectInput, selectOutput, requestAccess } from '../midi/connection.js';
-import {
-  startMirror, stopMirror, setSection, setCommandHandler,
-  onMirrorStatus, isMirrorActive,
-} from '../shared/app-mirror.js';
+import { onStateChange } from '../midi/connection.js';
+import { setSection, setCommandHandler } from '../shared/app-mirror.js';
 
 const TEMPLATE = `
   <div class="controller-root">
@@ -37,7 +34,6 @@ const TEMPLATE = `
       <button class="tab-btn active" data-tab="patches">PATCHES</button>
       <button class="tab-btn" data-tab="effects">EFFECTS</button>
       <button class="tab-btn" data-tab="controls">CONTROLS</button>
-      <button class="tab-btn" data-tab="settings">SETTINGS</button>
     </div>
 
     <div class="patch-list" data-role="patch-list"></div>
@@ -48,45 +44,6 @@ const TEMPLATE = `
 
     <div class="controls-panel hidden" data-role="controls-panel">
       <div class="controls-list" data-role="controls-list"></div>
-    </div>
-
-    <div class="settings-panel hidden" data-role="settings-panel">
-      <div class="setting-group">
-        <div class="setting-label">MIDI Output Device</div>
-        <div class="device-list" data-role="output-devices"></div>
-      </div>
-      <div class="setting-group">
-        <div class="setting-label">MIDI Input Device</div>
-        <div class="device-list" data-role="input-devices"></div>
-      </div>
-      <div class="setting-group">
-        <div class="setting-label">MIDI Channel</div>
-        <div class="setting-options" data-role="channel-options"></div>
-      </div>
-      <div class="setting-group">
-        <div class="setting-label">Diagnostics</div>
-        <button class="identity-btn" data-action="identity">SEND IDENTITY REQUEST (F0 7E 7F 06 01 F7)</button>
-        <div class="identity-result hidden" data-role="identity-result"></div>
-      </div>
-      <div class="setting-group">
-        <div class="setting-label">Mirror to iPad</div>
-        <div class="mirror-panel" data-role="mirror-panel">
-          <button class="identity-btn" data-action="mirror-toggle">START MIRRORING</button>
-          <div class="mirror-status hidden" data-role="mirror-status">
-            <div class="mirror-code" data-role="mirror-code">------</div>
-            <div class="mirror-help">
-              On your iPad, open this page and add
-              <code data-role="mirror-hash">#mirror=------</code>
-              to the URL.
-            </div>
-            <div class="mirror-peers" data-role="mirror-peers">0 connected</div>
-          </div>
-        </div>
-      </div>
-      <div class="setting-group">
-        <div class="setting-label">Profile Notes</div>
-        <div class="profile-notes" data-role="profile-notes">—</div>
-      </div>
     </div>
 
     <div class="footer">
@@ -107,37 +64,24 @@ export function mountController(root) {
   let lastRenderedBanksFor = null; // profile id for bank bar
 
   buildProfileSelect();
-  buildChannelOptions();
   $('[data-role="footer-version"]').textContent = `v${__APP_VERSION__}`;
   const unsubscribeTx = onTx(() => flashLed());
 
   $$('[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
-  $('[data-action="identity"]').addEventListener('click', () => controller.sendIdentityRequest());
-  $('[data-action="mirror-toggle"]').addEventListener('click', toggleMirror);
 
-  let mirrorStatus = null;
-
+  // Wire this view into the shared mirror host so controller state
+  // publishes out and client commands (setPatch, setBank, etc.) come
+  // back in. Device lists, channel picker, mirror toggle, identity
+  // request, and profile notes all live in the top-level Settings tab
+  // now; this view is the "glance at the current patch" surface only.
   setCommandHandler('controller', (cmd) => controller.handleMirrorCommand(cmd));
   const unsubscribeMirrorPublish = controller.onChange((snap) => {
     setSection('controller', buildMirrorState(snap));
   });
   // Seed initial section state so late-joining clients see controller state.
   setSection('controller', buildMirrorState(controller.getSnapshot()));
-
-  const unsubscribeMirrorStatus = onMirrorStatus((st) => {
-    mirrorStatus = st;
-    const active = st.state !== 'idle';
-    $('[data-action="mirror-toggle"]').textContent = active ? 'STOP MIRRORING' : 'START MIRRORING';
-    $('[data-role="mirror-status"]').classList.toggle('hidden', !active);
-    if (active) renderMirrorPanel();
-  });
-
-  function toggleMirror() {
-    if (isMirrorActive()) stopMirror();
-    else startMirror();
-  }
 
   function buildMirrorState(snap) {
     return {
@@ -151,19 +95,6 @@ export function mountController(root) {
     };
   }
 
-  function renderMirrorPanel() {
-    if (!mirrorStatus) return;
-    const codeEl = $('[data-role="mirror-code"]');
-    const hashEl = $('[data-role="mirror-hash"]');
-    const peersEl = $('[data-role="mirror-peers"]');
-    const code = mirrorStatus.code || '------';
-    codeEl.textContent = code;
-    hashEl.textContent = `#mirror=${code}`;
-    peersEl.textContent = mirrorStatus.state === 'disconnected'
-      ? 'Disconnected — retrying…'
-      : `${mirrorStatus.peers || 0} connected`;
-  }
-
   const unsubscribe = controller.onChange(render);
   const unsubscribeMIDI = onStateChange(() => render(controller.getSnapshot()));
   render(controller.getSnapshot());
@@ -174,7 +105,6 @@ export function mountController(root) {
     $('[data-role="patch-list"]').classList.toggle('hidden', tab !== 'patches');
     $('[data-role="effects-panel"]').classList.toggle('hidden', tab !== 'effects');
     $('[data-role="controls-panel"]').classList.toggle('hidden', tab !== 'controls');
-    $('[data-role="settings-panel"]').classList.toggle('hidden', tab !== 'settings');
     render(controller.getSnapshot());
   }
 
@@ -190,25 +120,12 @@ export function mountController(root) {
     sel.addEventListener('change', (e) => controller.setProfile(e.target.value));
   }
 
-  function buildChannelOptions() {
-    const container = $('[data-role="channel-options"]');
-    container.innerHTML = '';
-    for (let i = 0; i < 16; i++) {
-      const btn = document.createElement('button');
-      btn.className = 'setting-opt';
-      btn.textContent = String(i + 1);
-      btn.addEventListener('click', () => controller.setChannel(i));
-      container.appendChild(btn);
-    }
-  }
-
   function render(snap) {
-    const { profile, bankIndex, patchIndex, channel, effectValues, controlStates, lastMessage, lastIdentity } = snap;
+    const { profile, bankIndex, patchIndex, channel, effectValues, controlStates, lastMessage } = snap;
 
     $('[data-role="manufacturer"]').textContent = (profile.manufacturer || '').toUpperCase();
     $('[data-role="model"]').textContent = (profile.model || '').toUpperCase();
     $('[data-role="profile-select"]').value = profile.id;
-    $('[data-role="profile-notes"]').textContent = profile.notes || '—';
 
     const bank = profile.banks[bankIndex];
     const patches = bank?.patches || [];
@@ -230,21 +147,6 @@ export function mountController(root) {
     }
     if (activeTab === 'controls') {
       mountControls($('[data-role="controls-list"]'), profile, (id) => controller.toggleControl(id))(controlStates);
-    }
-    if (activeTab === 'settings') renderDeviceLists();
-
-    $$('[data-role="channel-options"] .setting-opt').forEach((btn, i) => {
-      btn.classList.toggle('active', i === channel);
-    });
-
-    const result = $('[data-role="identity-result"]');
-    if (lastIdentity) {
-      result.classList.remove('hidden');
-      result.textContent =
-        `Manufacturer: ${lastIdentity.manufacturerName}\n` +
-        `Family:       ${formatPair(lastIdentity.familyCode)}\n` +
-        `Model:        ${formatPair(lastIdentity.modelNumber)}\n` +
-        `Version:      ${lastIdentity.version.map(b => b.toString(16).padStart(2, '0')).join(' ')}`;
     }
   }
 
@@ -291,10 +193,6 @@ export function mountController(root) {
     });
   }
 
-  function formatPair(bytes) {
-    return bytes.map(b => b.toString(16).padStart(2, '0')).join(' ');
-  }
-
   function flashLed() {
     const led = $('[data-role="midi-led"]');
     if (!led) return;
@@ -307,60 +205,12 @@ export function mountController(root) {
     }, 120);
   }
 
-  function renderDeviceLists() {
-    const midi = getState();
-    renderDeviceList($('[data-role="output-devices"]'), midi.outputs, midi.selectedOutputId, (id) => selectOutput(id), 'output');
-    renderDeviceList($('[data-role="input-devices"]'), midi.inputs, midi.selectedInputId, (id) => selectInput(id), 'input');
-  }
-
-  function renderDeviceList(container, devices, selectedId, onPick, kind) {
-    container.innerHTML = '';
-
-    const midi = getState();
-    if (!midi.supported) {
-      container.innerHTML = '<div class="no-devices">Web MIDI not supported. Open in Chrome or Edge.</div>';
-      return;
-    }
-    if (!midi.requested) {
-      const btn = document.createElement('button');
-      btn.className = 'identity-btn';
-      btn.textContent = 'GRANT MIDI ACCESS';
-      btn.addEventListener('click', () => requestAccess({ sysex: true }));
-      container.appendChild(btn);
-      return;
-    }
-    if (midi.error) {
-      container.innerHTML = `<div class="no-devices">MIDI access denied: ${midi.error}</div>`;
-      return;
-    }
-    if (devices.length === 0) {
-      container.innerHTML = `<div class="no-devices">No MIDI ${kind}s found. Connect your keyboard and reload.</div>`;
-      return;
-    }
-
-    devices.forEach(d => {
-      const isActive = d.id === selectedId;
-      const div = document.createElement('button');
-      div.className = 'device-item' + (isActive ? ' active' : '');
-      div.innerHTML = `
-        <div>
-          <div class="device-name">${d.name}</div>
-          <div class="device-id">${d.manufacturer || '—'} · ${d.id.slice(0, 12)}</div>
-        </div>
-        ${isActive ? '<span class="device-check">✓</span>' : ''}
-      `;
-      div.addEventListener('click', () => onPick(d.id));
-      container.appendChild(div);
-    });
-  }
-
   return {
     destroy() {
       unsubscribe();
       unsubscribeMIDI();
       unsubscribeTx();
       unsubscribeMirrorPublish();
-      unsubscribeMirrorStatus();
     },
   };
 }
