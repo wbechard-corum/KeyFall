@@ -7,6 +7,7 @@ import { getSong } from '../trainer/library.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
 import { getSetting, updateSettings } from '../shared/settings.js';
 import { renameSong, setSongStarred } from '../trainer/library.js';
+import { createSheet } from '../trainer/sheet.js';
 
 const TEMPLATE = `
   <div class="mirror-client-root">
@@ -69,10 +70,20 @@ const TEMPLATE = `
 
       <div class="mc-panel" data-panel="live">
         <div class="mc-trainer" data-role="trainer">
-          <div class="mc-trainer-song" data-role="trainer-song">No song loaded</div>
+          <div class="mc-trainer-song-row">
+            <div class="mc-trainer-song" data-role="trainer-song">No song loaded</div>
+            <div class="view-toggle mc-view-toggle">
+              <button class="mc-view-btn active" data-action="view-notes">NOTES</button>
+              <button class="mc-view-btn" data-action="view-sheet">SHEET</button>
+            </div>
+          </div>
           <div class="mc-trainer-canvas-wrap" data-role="trainer-canvas-wrap">
             <canvas data-role="trainer-canvas"></canvas>
             <div class="mc-trainer-canvas-empty hidden" data-role="trainer-canvas-empty">No song yet</div>
+            <div class="sheet-wrap hidden" data-role="mc-sheet-wrap">
+              <div class="sheet-status" data-role="mc-sheet-status"></div>
+              <div class="sheet-host" data-role="mc-sheet-host"></div>
+            </div>
           </div>
           <div class="mc-trainer-progress" data-role="trainer-progress-track">
             <div class="mc-trainer-progress-fill" data-role="trainer-progress-fill"></div>
@@ -212,6 +223,12 @@ export function mountMirrorClient(root, code) {
       if (t) {
         updateLocalClockFromState(t);
         syncClientSong(t.song);
+        // If the active song changed and we're showing sheet music,
+        // pull the new MusicXML.
+        const newId = t.song?.id || null;
+        if (viewMode === 'sheet' && newId !== sheetSongId) {
+          refreshRemoteSheet();
+        }
       }
       render();
     },
@@ -614,6 +631,13 @@ export function mountMirrorClient(root, code) {
 
   let trainerRenderer = null;
   let trainerCanvas = null;
+  let sheet = null;
+  let sheetHost = null;
+  let sheetStatus = null;
+  let sheetWrap = null;
+  let viewMode = 'notes';
+  let sheetSongId = null;
+  let sheetPollTimer = null;
   let currentClientSong = null;        // parsed song currently loaded client-side
   let currentClientSongKey = null;     // 'lib:<id>' or 'demo:<id>' — invalidates reload
   let songLoadInFlight = null;
@@ -626,6 +650,49 @@ export function mountMirrorClient(root, code) {
   };
   let canvasRafId = null;
 
+  function setRemoteView(mode) {
+    viewMode = mode;
+    trainerCanvas.classList.toggle('hidden', mode !== 'notes');
+    $('[data-role="trainer-canvas-empty"]').classList.toggle('hidden',
+      mode !== 'notes' || !!currentClientSong);
+    sheetWrap.classList.toggle('hidden', mode !== 'sheet');
+    document.querySelectorAll('.mc-view-btn').forEach(btn =>
+      btn.classList.toggle('active', btn.dataset.action === `view-${mode}`));
+    if (mode === 'sheet') refreshRemoteSheet();
+    else stopRemoteSheetPoll();
+  }
+
+  function stopRemoteSheetPoll() {
+    if (sheetPollTimer) { clearTimeout(sheetPollTimer); sheetPollTimer = null; }
+  }
+
+  async function refreshRemoteSheet() {
+    stopRemoteSheetPoll();
+    const id = state?.trainer?.song?.id;
+    sheetSongId = id;
+    if (!id) {
+      sheet?.reset();
+      sheetStatus.textContent = 'Load a library song on the host to see notation.';
+      sheetStatus.classList.remove('hidden');
+      return;
+    }
+    sheetStatus.textContent = 'Loading notation…';
+    sheetStatus.classList.remove('hidden');
+    const result = await sheet.load(id);
+    if (sheetSongId !== id) return;  // user moved on while we were loading
+    if (result.state === 'ready') {
+      sheetStatus.classList.add('hidden');
+      sheet.moveCursor(interpolateTime());
+    } else if (result.state === 'pending') {
+      sheetStatus.textContent = 'Converting MIDI to notation… (this can take a few seconds)';
+      sheetPollTimer = setTimeout(refreshRemoteSheet, 2500);
+    } else if (result.state === 'error') {
+      sheetStatus.textContent = `Couldn't render notation: ${result.error}`;
+    } else {
+      sheetStatus.textContent = 'No notation for this song.';
+    }
+  }
+
   const clientPressed = new Set();  // notes the client itself is touching
 
   function ensureTrainerRenderer() {
@@ -635,6 +702,16 @@ export function mountMirrorClient(root, code) {
     trainerRenderer = createRenderer(trainerCanvas);
     trainerRenderer.setKeyboardRange(Number(getSetting('keyboardRange') || 88));
     trainerRenderer.resize();
+
+    // VIEW toggle (NOTES / SHEET) — separate from the host's
+    // toggle since the remote can show a different view than the
+    // host is showing.
+    sheetHost = $('[data-role="mc-sheet-host"]');
+    sheetStatus = $('[data-role="mc-sheet-status"]');
+    sheetWrap = $('[data-role="mc-sheet-wrap"]');
+    sheet = createSheet(sheetHost);
+    $('[data-action="view-notes"]').addEventListener('click', () => setRemoteView('notes'));
+    $('[data-action="view-sheet"]').addEventListener('click', () => setRemoteView('sheet'));
 
     const keysSelect = $('[data-action="keys"]');
     if (keysSelect) {
@@ -747,6 +824,9 @@ export function mountMirrorClient(root, code) {
 
   function renderClientCanvas() {
     if (!trainerRenderer) return;
+    if (viewMode === 'sheet' && sheet?.isReady()) {
+      sheet.moveCursor(interpolateTime());
+    }
     const t = state?.trainer;
     // Host publishes pressedKeys as [[midi, velocity], ...] tuples.
     // Fall back tolerantly when older hosts publish just an array of
@@ -1016,6 +1096,7 @@ export function mountMirrorClient(root, code) {
   return {
     destroy() {
       stopCanvasLoop();
+      stopRemoteSheetPoll();
       client.close();
     },
   };

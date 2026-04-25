@@ -1495,7 +1495,40 @@ canvas { display: block; width: 100%; height: 100%; }
   overflow-y: auto;
 }
 
+.mc-trainer-song-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-view-toggle { padding: 2px; }
+
+.mc-view-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.mc-view-btn.active {
+  background: var(--plate);
+  color: var(--accent);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.08),
+    0 1px 3px rgba(0,0,0,0.5);
+}
+
+.mc-trainer-canvas-wrap canvas.hidden { display: none !important; }
+
 .mc-trainer-song {
+  flex: 1;
+  min-width: 0;
   font-size: 16px;
   font-weight: 600;
   color: var(--text);
@@ -1503,7 +1536,10 @@ canvas { display: block; width: 100%; height: 100%; }
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
-  text-align: center;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mc-trainer-canvas-wrap {
