@@ -33,3 +33,21 @@ export async function deleteSong(id) {
   const res = await fetch(`${API}/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!res.ok && res.status !== 404) throw new Error(`delete failed: ${res.status}`);
 }
+
+async function patchSongFields(id, patch) {
+  const res = await fetch(`${API}/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`patch failed: ${res.status}`);
+  return await res.json();
+}
+
+export function renameSong(id, name) {
+  return patchSongFields(id, { name });
+}
+
+export function setSongStarred(id, starred) {
+  return patchSongFields(id, { starred });
+}

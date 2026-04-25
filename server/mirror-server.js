@@ -41,7 +41,7 @@ async function createSong(name, bytes) {
   const filename = `${id}.mid`;
   await fs.writeFile(path.join(SONGS_DIR, filename), Buffer.from(bytes));
   const rows = await readIndex();
-  const record = { id, name, filename, size: bytes.byteLength ?? bytes.length, addedAt: Date.now() };
+  const record = { id, name, filename, size: bytes.byteLength ?? bytes.length, addedAt: Date.now(), starred: false };
   rows.push(record);
   await writeIndex(rows);
   return record;
@@ -50,6 +50,20 @@ async function createSong(name, bytes) {
 async function getSongRecord(id) {
   const rows = await readIndex();
   return rows.find(r => r.id === id) || null;
+}
+
+async function patchSong(id, patch) {
+  const rows = await readIndex();
+  const row = rows.find(r => r.id === id);
+  if (!row) return null;
+  if (typeof patch.name === 'string') {
+    row.name = patch.name.slice(0, 200);
+  }
+  if (typeof patch.starred === 'boolean') {
+    row.starred = patch.starred;
+  }
+  await writeIndex(rows);
+  return row;
 }
 
 async function deleteSongById(id) {
@@ -141,7 +155,10 @@ const http = createServer(async (req, res) => {
 
     if (pathname === '/api/songs' && req.method === 'GET') {
       const rows = await listSongs();
-      sendJson(res, 200, rows.map(r => ({ id: r.id, name: r.name, size: r.size, addedAt: r.addedAt })));
+      sendJson(res, 200, rows.map(r => ({
+        id: r.id, name: r.name, size: r.size,
+        addedAt: r.addedAt, starred: !!r.starred,
+      })));
       return;
     }
 
@@ -171,6 +188,19 @@ const http = createServer(async (req, res) => {
       if (req.method === 'DELETE') {
         const ok = await deleteSongById(id);
         sendJson(res, ok ? 200 : 404, { ok });
+        return;
+      }
+      if (req.method === 'PATCH') {
+        const raw = await readBody(req, 64 * 1024);
+        let patch;
+        try { patch = JSON.parse(raw.toString('utf8') || '{}'); }
+        catch { sendJson(res, 400, { error: 'invalid json' }); return; }
+        const updated = await patchSong(id, patch);
+        if (!updated) { sendJson(res, 404, { error: 'not found' }); return; }
+        sendJson(res, 200, {
+          id: updated.id, name: updated.name, size: updated.size,
+          addedAt: updated.addedAt, starred: !!updated.starred,
+        });
         return;
       }
     }

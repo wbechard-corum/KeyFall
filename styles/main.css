@@ -979,7 +979,88 @@ canvas { display: block; width: 100%; height: 100%; }
   font-size: 13px;
 }
 
-.songs-list { display: flex; flex-direction: column; gap: 6px; }
+.songs-tabs {
+  display: flex;
+  gap: 0;
+  padding: 3px;
+  background: var(--inset);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+  align-self: flex-start;
+}
+
+.songs-tab {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.songs-tab.active {
+  background: var(--plate);
+  color: var(--accent);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.08),
+    0 1px 3px rgba(0,0,0,0.5);
+}
+
+.songs-list-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.songs-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.songs-jump {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 2px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+}
+
+.songs-jump-letter {
+  width: 20px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.songs-jump-letter.faint { color: var(--text-muted); cursor: default; }
+.songs-jump-letter:hover:not([disabled]) { background: var(--accent-dim); }
+
+.songs-section {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--text-muted);
+  padding: 14px 4px 4px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  margin-bottom: 2px;
+}
 
 .songs-item {
   display: flex;
@@ -987,6 +1068,109 @@ canvas { display: block; width: 100%; height: 100%; }
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
+}
+
+.songs-item-star {
+  width: 44px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.songs-item-star.on { color: var(--accent); text-shadow: 0 0 8px rgba(77,214,195,0.5); }
+.songs-item-star:hover { color: var(--accent); }
+
+.songs-item-rename {
+  width: 44px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.songs-item-rename:hover { color: var(--accent); }
+
+.songs-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.songs-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+}
+
+.songs-modal-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 22px 24px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+}
+
+.songs-modal-title {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.songs-modal-input {
+  padding: 12px 14px;
+  background: var(--inset);
+  border: 1px solid rgba(0,0,0,0.5);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 14px;
+  outline: none;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+}
+
+.songs-modal-input:focus { border-color: rgba(77,214,195,0.5); }
+
+.songs-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.songs-modal-btn {
+  padding: 9px 16px;
+  background: var(--panel-2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.songs-modal-btn.primary {
+  background: linear-gradient(180deg, var(--accent), rgba(77,214,195,0.67));
+  color: #041513;
+  border-color: rgba(0,0,0,0.5);
+  font-weight: 600;
 }
 
 .songs-item-info {

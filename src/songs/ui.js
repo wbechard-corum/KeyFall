@@ -1,4 +1,4 @@
-import { listSongs, saveSong, getSong, deleteSong } from '../trainer/library.js';
+import { listSongs, saveSong, getSong, deleteSong, renameSong, setSongStarred } from '../trainer/library.js';
 
 const TEMPLATE = `
   <div class="songs-root">
@@ -13,12 +13,30 @@ const TEMPLATE = `
       </div>
     </div>
 
+    <div class="songs-tabs">
+      <button class="songs-tab active" data-tab="all">ALL</button>
+      <button class="songs-tab" data-tab="starred">★ STARRED</button>
+    </div>
+
     <div class="songs-body">
-      <div class="songs-empty hidden" data-role="empty">
-        No songs uploaded yet. Drop .mid files here or use the Upload button.
-      </div>
+      <div class="songs-empty hidden" data-role="empty"></div>
       <div class="songs-error hidden" data-role="error"></div>
-      <div class="songs-list" data-role="list"></div>
+      <div class="songs-list-wrap">
+        <div class="songs-list" data-role="list"></div>
+        <div class="songs-jump" data-role="jump"></div>
+      </div>
+    </div>
+
+    <div class="songs-modal hidden" data-role="rename-modal">
+      <div class="songs-modal-backdrop" data-role="rename-backdrop"></div>
+      <div class="songs-modal-card">
+        <div class="songs-modal-title">Rename song</div>
+        <input class="songs-modal-input" type="text" data-role="rename-input" maxlength="200">
+        <div class="songs-modal-actions">
+          <button class="songs-modal-btn" data-action="rename-cancel">Cancel</button>
+          <button class="songs-modal-btn primary" data-action="rename-save">Save</button>
+        </div>
+      </div>
     </div>
   </div>
 `;
@@ -26,15 +44,39 @@ const TEMPLATE = `
 export function mountSongs(root, { onLoadSong } = {}) {
   root.innerHTML = TEMPLATE;
   const $ = (sel) => root.querySelector(sel);
+  const $$ = (sel) => root.querySelectorAll(sel);
 
   const fileInput = $('[data-role="file-input"]');
   const list = $('[data-role="list"]');
   const empty = $('[data-role="empty"]');
   const errorEl = $('[data-role="error"]');
   const subtitle = $('[data-role="subtitle"]');
+  const jumpHost = $('[data-role="jump"]');
+  const renameModal = $('[data-role="rename-modal"]');
+  const renameInput = $('[data-role="rename-input"]');
+
+  let activeTab = 'all';
+  let allRows = [];
+  let renameTarget = null;
 
   $('[data-action="upload"]').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => handleFiles(Array.from(e.target.files || [])));
+
+  $$('.songs-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTab = btn.dataset.tab;
+      $$('.songs-tab').forEach(b => b.classList.toggle('active', b === btn));
+      renderList();
+    });
+  });
+
+  $('[data-action="rename-cancel"]').addEventListener('click', closeRename);
+  $('[data-action="rename-save"]').addEventListener('click', commitRename);
+  $('[data-role="rename-backdrop"]').addEventListener('click', closeRename);
+  renameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') commitRename();
+    else if (e.key === 'Escape') closeRename();
+  });
 
   const body = root.querySelector('.songs-body');
   body.addEventListener('dragover', (e) => { e.preventDefault(); body.classList.add('dragging'); });
@@ -65,49 +107,131 @@ export function mountSongs(root, { onLoadSong } = {}) {
 
   async function refresh() {
     try {
-      const rows = await listSongs();
-      renderList(rows);
+      allRows = await listSongs();
+      renderList();
     } catch (err) {
       showError(`Failed to load library: ${err.message}`);
     }
   }
 
-  function renderList(rows) {
+  function visibleRows() {
+    const rows = activeTab === 'starred' ? allRows.filter(r => r.starred) : allRows;
+    return [...rows].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function renderList() {
     list.innerHTML = '';
+    const rows = visibleRows();
+    const totalLabel = `${allRows.length} song${allRows.length === 1 ? '' : 's'}` +
+      (activeTab === 'starred' ? ` · ${rows.length} starred` : '');
+    subtitle.textContent = totalLabel;
+
     if (rows.length === 0) {
       empty.classList.remove('hidden');
-      subtitle.textContent = 'Empty';
+      empty.textContent = activeTab === 'starred'
+        ? 'No starred songs yet — tap the ☆ on any row to add one.'
+        : 'No songs uploaded yet. Drop .mid files here or use the Upload button.';
+      jumpHost.innerHTML = '';
       return;
     }
     empty.classList.add('hidden');
-    subtitle.textContent = `${rows.length} song${rows.length === 1 ? '' : 's'}`;
 
+    let lastLetter = null;
+    const letterAnchors = {};
     for (const row of rows) {
-      const item = document.createElement('div');
-      item.className = 'songs-item';
+      const letter = (row.name[0] || '#').toUpperCase();
+      if (letter !== lastLetter) {
+        const header = document.createElement('div');
+        header.className = 'songs-section';
+        header.textContent = letter;
+        header.dataset.letter = letter;
+        list.appendChild(header);
+        letterAnchors[letter] = header;
+        lastLetter = letter;
+      }
+      list.appendChild(buildRow(row));
+    }
+    renderJumpIndex(letterAnchors);
+  }
 
-      const info = document.createElement('button');
-      info.className = 'songs-item-info';
-      info.innerHTML = `
-        <div class="songs-item-name">${escapeHtml(row.name)}</div>
-        <div class="songs-item-meta">${formatBytes(row.size)} · ${formatDate(row.addedAt)}</div>
-      `;
-      info.addEventListener('click', () => loadSong(row));
+  function buildRow(row) {
+    const item = document.createElement('div');
+    item.className = 'songs-item';
 
-      const del = document.createElement('button');
-      del.className = 'songs-item-del';
-      del.setAttribute('aria-label', `Delete ${row.name}`);
-      del.textContent = '×';
-      del.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!confirm(`Delete "${row.name}"?`)) return;
-        try { await deleteSong(row.id); refresh(); }
-        catch (err) { showError(`Delete failed: ${err.message}`); }
+    const star = document.createElement('button');
+    star.className = 'songs-item-star' + (row.starred ? ' on' : '');
+    star.setAttribute('aria-label', row.starred ? `Unstar ${row.name}` : `Star ${row.name}`);
+    star.textContent = row.starred ? '★' : '☆';
+    star.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const next = !row.starred;
+      // Optimistic UI; revert on failure.
+      row.starred = next;
+      star.classList.toggle('on', next);
+      star.textContent = next ? '★' : '☆';
+      try { await setSongStarred(row.id, next); }
+      catch (err) {
+        row.starred = !next;
+        star.classList.toggle('on', !next);
+        star.textContent = !next ? '★' : '☆';
+        showError(`Star failed: ${err.message}`);
+      }
+      if (activeTab === 'starred' && !row.starred) renderList();
+      else subtitle.textContent =
+        `${allRows.length} song${allRows.length === 1 ? '' : 's'}` +
+        (activeTab === 'starred' ? ` · ${visibleRows().length} starred` : '');
+    });
+
+    const info = document.createElement('button');
+    info.className = 'songs-item-info';
+    info.innerHTML = `
+      <div class="songs-item-name"></div>
+      <div class="songs-item-meta">${formatBytes(row.size)} · ${formatDate(row.addedAt)}</div>
+    `;
+    info.querySelector('.songs-item-name').textContent = row.name;
+    info.addEventListener('click', () => loadSong(row));
+
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'songs-item-rename';
+    renameBtn.setAttribute('aria-label', `Rename ${row.name}`);
+    renameBtn.textContent = '✎';
+    renameBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openRename(row);
+    });
+
+    const del = document.createElement('button');
+    del.className = 'songs-item-del';
+    del.setAttribute('aria-label', `Delete ${row.name}`);
+    del.textContent = '×';
+    del.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete "${row.name}"?`)) return;
+      try { await deleteSong(row.id); refresh(); }
+      catch (err) { showError(`Delete failed: ${err.message}`); }
+    });
+
+    item.appendChild(star);
+    item.appendChild(info);
+    item.appendChild(renameBtn);
+    item.appendChild(del);
+    return item;
+  }
+
+  function renderJumpIndex(letterAnchors) {
+    jumpHost.innerHTML = '';
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
+    for (const letter of letters) {
+      const present = !!letterAnchors[letter];
+      const btn = document.createElement('button');
+      btn.className = 'songs-jump-letter' + (present ? '' : ' faint');
+      btn.textContent = letter;
+      btn.disabled = !present;
+      btn.addEventListener('click', () => {
+        const target = letterAnchors[letter];
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
-
-      item.appendChild(info);
-      item.appendChild(del);
-      list.appendChild(item);
+      jumpHost.appendChild(btn);
     }
   }
 
@@ -118,6 +242,33 @@ export function mountSongs(root, { onLoadSong } = {}) {
       onLoadSong?.({ id: row.id, name: row.name, bytes: record.bytes });
     } catch (err) {
       showError(`Load failed: ${err.message}`);
+    }
+  }
+
+  function openRename(row) {
+    renameTarget = row;
+    renameInput.value = row.name;
+    renameModal.classList.remove('hidden');
+    setTimeout(() => { renameInput.focus(); renameInput.select(); }, 30);
+  }
+
+  function closeRename() {
+    renameTarget = null;
+    renameModal.classList.add('hidden');
+  }
+
+  async function commitRename() {
+    if (!renameTarget) return;
+    const next = renameInput.value.trim();
+    if (!next || next === renameTarget.name) { closeRename(); return; }
+    try {
+      await renameSong(renameTarget.id, next);
+      renameTarget.name = next;
+      closeRename();
+      renderList();
+    } catch (err) {
+      showError(`Rename failed: ${err.message}`);
+      closeRename();
     }
   }
 
@@ -141,12 +292,4 @@ function formatBytes(n) {
 function formatDate(ms) {
   const d = new Date(ms);
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
