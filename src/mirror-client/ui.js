@@ -685,8 +685,9 @@ export function mountMirrorClient(root, code) {
       showRemoteSheetStatus({ text: 'Converting MIDI to notation… (this can take a few seconds).' });
       sheetPollTimer = setTimeout(refreshRemoteSheet, 2500);
     } else if (result.state === 'failed') {
+      const reason = result.error ? ` Conversion error: ${result.error}` : '';
       showRemoteSheetStatus({
-        text: 'The converter couldn’t turn this MIDI into notation.',
+        text: `The converter couldn’t turn this MIDI into notation.${reason}`,
         action: 'RETRY',
       });
     } else if (result.state === 'error') {

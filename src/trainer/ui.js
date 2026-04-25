@@ -294,8 +294,11 @@ export function mountTrainer(root) {
       showSheetStatus({ text: 'Converting MIDI to notation… (this can take a few seconds).' });
       sheetPollTimer = setTimeout(refreshSheet, 2500);
     } else if (result.state === 'failed') {
+      const reason = result.error
+        ? `Conversion error: ${result.error}`
+        : 'The file may be malformed or use features the converter can’t handle.';
       showSheetStatus({
-        text: 'The converter couldn’t turn this MIDI into notation. The file may be malformed or use features the converter can’t handle.',
+        text: `The converter couldn’t turn this MIDI into notation. ${reason}`,
         action: 'RETRY',
       });
     } else if (result.state === 'error') {

@@ -144,10 +144,11 @@ async function runConversion(id) {
     await convertMidi(src, dst);
     const stat = await fs.stat(dst).catch(() => null);
     if (!stat || stat.size === 0) throw new Error('output empty');
-    await markStatus(id, 'ready', { converter: MSCORE_CMD });
+    await markStatus(id, 'ready', { converter: MSCORE_CMD, conversionError: null });
   } catch (err) {
-    console.warn(`MIDI→MusicXML conversion failed for ${id}: ${err.message}`);
-    await markStatus(id, 'failed', { converter: MSCORE_CMD });
+    const msg = err.message || String(err);
+    console.warn(`MIDI→MusicXML conversion failed for ${id}: ${msg}`);
+    await markStatus(id, 'failed', { converter: MSCORE_CMD, conversionError: msg.slice(0, 400) });
   }
 }
 
@@ -394,7 +395,10 @@ const http = createServer(async (req, res) => {
       const dst = notationPath(id);
       const stat = await fs.stat(dst).catch(() => null);
       if (!stat || stat.size === 0) {
-        sendJson(res, 202, { status: record.notationStatus || 'pending' });
+        sendJson(res, 202, {
+          status: record.notationStatus || 'pending',
+          error: record.conversionError || null,
+        });
         return;
       }
       res.writeHead(200, {

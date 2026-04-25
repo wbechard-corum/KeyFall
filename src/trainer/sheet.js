@@ -23,7 +23,10 @@ async function fetchNotation(id) {
     let body = null;
     try { body = await res.json(); } catch { /* tolerate empty bodies */ }
     const status = body?.status || 'pending';
-    return { state: status === 'failed' ? 'failed' : 'pending' };
+    return {
+      state: status === 'failed' ? 'failed' : 'pending',
+      error: body?.error || null,
+    };
   }
   if (res.status === 404) return { state: 'no-song' };
   if (!res.ok) return { state: 'error', error: `notation fetch ${res.status}` };
