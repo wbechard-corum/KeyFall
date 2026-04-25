@@ -146,6 +146,45 @@ async function backfillNotation() {
   if (queued > 0) console.log(`Backfilling notation for ${queued} song(s) using ${MSCORE_CMD}…`);
 }
 
+// If the index gets reset but the volume still has the .mid files
+// (e.g. when the volume mount was missing on a previous deployment
+// and the user just fixed it, or after a partial restore), walk
+// the songs directory and re-add anything orphaned.
+async function recoverOrphanSongs() {
+  const rows = await readIndex();
+  const known = new Set(rows.map(r => r.id));
+  let entries;
+  try { entries = await fs.readdir(SONGS_DIR); }
+  catch { return 0; }
+  let recovered = 0;
+  const now = Date.now();
+  for (const name of entries) {
+    const m = name.match(/^([a-f0-9-]{36})\.mid$/i);
+    if (!m) continue;
+    const id = m[1];
+    if (known.has(id)) continue;
+    const full = path.join(SONGS_DIR, name);
+    let stat;
+    try { stat = await fs.stat(full); } catch { continue; }
+    rows.push({
+      id,
+      name: `Recovered ${id.slice(0, 8)}`,
+      filename: name,
+      size: stat.size,
+      addedAt: stat.mtimeMs || now,
+      starred: false,
+      notationStatus: 'pending',
+    });
+    recovered += 1;
+  }
+  if (recovered > 0) {
+    rows.sort((a, b) => a.addedAt - b.addedAt);
+    await writeIndex(rows);
+    console.log(`Recovered ${recovered} orphan song(s) from disk; added to index with placeholder names.`);
+  }
+  return recovered;
+}
+
 async function getSongRecord(id) {
   const rows = await readIndex();
   return rows.find(r => r.id === id) || null;
@@ -429,6 +468,8 @@ wss.on('connection', (ws) => {
 // ───────── Boot ─────────
 
 await ensureStorage();
+await recoverOrphanSongs().catch(err =>
+  console.warn('Orphan recovery failed:', err.message));
 backfillNotation().catch(err =>
   console.warn('Notation backfill failed:', err.message));
 
