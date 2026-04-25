@@ -25,6 +25,11 @@ Exits 0 on success. On failure, prints
     midi2xml ERROR <ExceptionType>: <message>
 to stderr and exits 1, so the caller can surface a useful message
 without parsing a Python traceback.
+
+Strips Unpitched percussion notes before export — music21's
+MusicXML exporter raises on them (Tom-Tom etc not in
+instrumentStream). The melodic / pitched content of the same
+parts is preserved.
 """
 import sys
 import traceback
@@ -35,10 +40,31 @@ if len(sys.argv) != 3:
 src, dst = sys.argv[1], sys.argv[2]
 
 try:
-    from music21 import converter
+    from music21 import converter, note
     score = converter.parse(src)
     if not score.parts:
         raise RuntimeError("MIDI has no parts after parsing")
+
+    unpitched = list(score.recurse().getElementsByClass(note.Unpitched))
+    if unpitched:
+        print(f"midi2xml stripping {len(unpitched)} percussion note(s) before export", file=sys.stderr)
+        for n in unpitched:
+            site = n.activeSite
+            if site is not None:
+                try:
+                    site.remove(n)
+                except Exception:
+                    pass
+        # Remove parts that are now empty (drum-only parts).
+        for p in list(score.parts):
+            if not list(p.flatten().notes):
+                try:
+                    score.remove(p)
+                except Exception:
+                    pass
+        if not score.parts:
+            raise RuntimeError("MIDI was percussion-only; nothing left to notate")
+
     score.write("musicxml", fp=dst)
 except SystemExit:
     raise
