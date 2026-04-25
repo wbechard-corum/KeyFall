@@ -170,11 +170,11 @@ export function createRenderer(canvas) {
         ctx.globalAlpha = 1;
       }
 
-      // Labels honour the configured mode.
+      // Falling-note labels are always on — knowing the upcoming
+      // pitch is the whole point of the trainer. Piano-key labels
+      // honour state.labelMode separately (in drawPiano).
       const pc = note.midi % 12;
-      const showLabel = state.labelMode === 'all'
-        || (state.labelMode === 'c-only' && pc === 0);
-      if (showLabel && !isPast && noteH > 14 && w > 14) {
+      if (!isPast && noteH > 14 && w > 14) {
         const noteName = NOTE_NAMES[pc];
         const octave = Math.floor(note.midi / 12) - 1;
         ctx.fillStyle = isActive ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.6)';

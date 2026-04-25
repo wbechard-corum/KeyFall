@@ -17,14 +17,26 @@ async function loadOSMD() {
 const xmlCache = new Map();
 
 async function fetchNotation(id) {
-  if (xmlCache.has(id)) return xmlCache.get(id);
+  if (xmlCache.has(id)) return { state: 'ready', xml: xmlCache.get(id) };
   const res = await fetch(`/api/songs/${encodeURIComponent(id)}/notation`);
-  if (res.status === 202) return null;             // still converting
-  if (res.status === 404) return null;             // unknown song
-  if (!res.ok) throw new Error(`notation fetch ${res.status}`);
+  if (res.status === 202) {
+    let body = null;
+    try { body = await res.json(); } catch { /* tolerate empty bodies */ }
+    const status = body?.status || 'pending';
+    return { state: status === 'failed' ? 'failed' : 'pending' };
+  }
+  if (res.status === 404) return { state: 'no-song' };
+  if (!res.ok) return { state: 'error', error: `notation fetch ${res.status}` };
   const xml = await res.text();
   xmlCache.set(id, xml);
-  return xml;
+  return { state: 'ready', xml };
+}
+
+export async function retryNotation(id) {
+  const res = await fetch(`/api/songs/${encodeURIComponent(id)}/notation/retry`, { method: 'POST' });
+  // Forget any cached entry so the next load re-fetches.
+  xmlCache.delete(id);
+  return res.ok;
 }
 
 export function createSheet(container) {
@@ -42,19 +54,15 @@ export function createSheet(container) {
     return cursorEl;
   }
 
-  async function load(songId) {
+  async function load(songId, { force = false } = {}) {
     if (!songId) {
       reset();
       return { state: 'no-song' };
     }
-    if (currentId === songId && osmd) return { state: 'ready' };
-    let xml;
-    try {
-      xml = await fetchNotation(songId);
-    } catch (err) {
-      return { state: 'error', error: err.message };
-    }
-    if (!xml) return { state: 'pending' };
+    if (!force && currentId === songId && osmd) return { state: 'ready' };
+    const result = await fetchNotation(songId);
+    if (result.state !== 'ready') return result;
+    const xml = result.xml;
     const Ctor = await loadOSMD();
     if (!osmd) {
       osmd = new Ctor(container, {

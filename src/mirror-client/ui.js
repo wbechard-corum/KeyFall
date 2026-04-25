@@ -7,7 +7,7 @@ import { getSong } from '../trainer/library.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
 import { getSetting, updateSettings } from '../shared/settings.js';
 import { renameSong, setSongStarred } from '../trainer/library.js';
-import { createSheet } from '../trainer/sheet.js';
+import { createSheet, retryNotation } from '../trainer/sheet.js';
 
 const TEMPLATE = `
   <div class="mirror-client-root">
@@ -666,30 +666,58 @@ export function mountMirrorClient(root, code) {
     if (sheetPollTimer) { clearTimeout(sheetPollTimer); sheetPollTimer = null; }
   }
 
-  async function refreshRemoteSheet() {
+  async function refreshRemoteSheet({ force = false } = {}) {
     stopRemoteSheetPoll();
     const id = state?.trainer?.song?.id;
     sheetSongId = id;
     if (!id) {
       sheet?.reset();
-      sheetStatus.textContent = 'Load a library song on the host to see notation.';
-      sheetStatus.classList.remove('hidden');
+      showRemoteSheetStatus({ text: 'Load a library song on the host to see notation.' });
       return;
     }
-    sheetStatus.textContent = 'Loading notation…';
-    sheetStatus.classList.remove('hidden');
-    const result = await sheet.load(id);
-    if (sheetSongId !== id) return;  // user moved on while we were loading
+    showRemoteSheetStatus({ text: 'Loading notation…' });
+    const result = await sheet.load(id, { force });
+    if (sheetSongId !== id) return;
     if (result.state === 'ready') {
       sheetStatus.classList.add('hidden');
       sheet.moveCursor(interpolateTime());
     } else if (result.state === 'pending') {
-      sheetStatus.textContent = 'Converting MIDI to notation… (this can take a few seconds)';
+      showRemoteSheetStatus({ text: 'Converting MIDI to notation… (this can take a few seconds).' });
       sheetPollTimer = setTimeout(refreshRemoteSheet, 2500);
+    } else if (result.state === 'failed') {
+      showRemoteSheetStatus({
+        text: 'MuseScore couldn’t convert this MIDI.',
+        action: 'RETRY',
+      });
     } else if (result.state === 'error') {
-      sheetStatus.textContent = `Couldn't render notation: ${result.error}`;
+      showRemoteSheetStatus({
+        text: `Couldn’t render notation: ${result.error}`,
+        action: 'RETRY',
+      });
     } else {
-      sheetStatus.textContent = 'No notation for this song.';
+      showRemoteSheetStatus({ text: 'No notation for this song.' });
+    }
+  }
+
+  function showRemoteSheetStatus({ text, action }) {
+    sheetStatus.classList.remove('hidden');
+    sheetStatus.innerHTML = '';
+    const msg = document.createElement('div');
+    msg.className = 'sheet-status-msg';
+    msg.textContent = text;
+    sheetStatus.appendChild(msg);
+    if (action === 'RETRY') {
+      const btn = document.createElement('button');
+      btn.className = 'sheet-status-btn';
+      btn.textContent = 'RETRY CONVERSION';
+      btn.addEventListener('click', async () => {
+        const id = state?.trainer?.song?.id;
+        if (!id) return;
+        showRemoteSheetStatus({ text: 'Re-queueing conversion…' });
+        await retryNotation(id);
+        refreshRemoteSheet({ force: true });
+      });
+      sheetStatus.appendChild(btn);
     }
   }
 

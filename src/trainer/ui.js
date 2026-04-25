@@ -10,7 +10,7 @@ import { setSection, setCommandHandler } from '../shared/app-mirror.js';
 import { getSong } from './library.js';
 import { DEMOS } from './demos.js';
 import { saveSong } from './library.js';
-import { createSheet } from './sheet.js';
+import { createSheet, retryNotation } from './sheet.js';
 
 const TEMPLATE = `
   <div class="trainer-root">
@@ -277,28 +277,56 @@ export function mountTrainer(root) {
     if (sheetPollTimer) { clearTimeout(sheetPollTimer); sheetPollTimer = null; }
   }
 
-  async function refreshSheet() {
+  async function refreshSheet({ force = false } = {}) {
     stopSheetPoll();
     const id = currentSongMeta?.id;
     if (!id) {
       sheet.reset();
-      sheetStatus.textContent = 'Load a library song to see its sheet music.';
-      sheetStatus.classList.remove('hidden');
+      showSheetStatus({ text: 'Load a library song to see its sheet music.' });
       return;
     }
-    sheetStatus.textContent = 'Loading notation…';
-    sheetStatus.classList.remove('hidden');
-    const result = await sheet.load(id);
+    showSheetStatus({ text: 'Loading notation…' });
+    const result = await sheet.load(id, { force });
     if (result.state === 'ready') {
       sheetStatus.classList.add('hidden');
       sheet.moveCursor(playback.state.currentTime);
     } else if (result.state === 'pending') {
-      sheetStatus.textContent = 'Converting MIDI to notation… (this can take a few seconds)';
-      sheetPollTimer = setTimeout(refreshSheet, 2000);
+      showSheetStatus({ text: 'Converting MIDI to notation… (this can take a few seconds).' });
+      sheetPollTimer = setTimeout(refreshSheet, 2500);
+    } else if (result.state === 'failed') {
+      showSheetStatus({
+        text: 'MuseScore couldn’t convert this MIDI. The file may be malformed or use features the converter can’t handle.',
+        action: 'RETRY',
+      });
     } else if (result.state === 'error') {
-      sheetStatus.textContent = `Couldn't render notation: ${result.error}`;
+      showSheetStatus({
+        text: `Couldn’t render notation: ${result.error}`,
+        action: 'RETRY',
+      });
     } else {
-      sheetStatus.textContent = 'No notation for this song.';
+      showSheetStatus({ text: 'No notation for this song.' });
+    }
+  }
+
+  function showSheetStatus({ text, action }) {
+    sheetStatus.classList.remove('hidden');
+    sheetStatus.innerHTML = '';
+    const msg = document.createElement('div');
+    msg.className = 'sheet-status-msg';
+    msg.textContent = text;
+    sheetStatus.appendChild(msg);
+    if (action === 'RETRY') {
+      const btn = document.createElement('button');
+      btn.className = 'sheet-status-btn';
+      btn.textContent = 'RETRY CONVERSION';
+      btn.addEventListener('click', async () => {
+        const id = currentSongMeta?.id;
+        if (!id) return;
+        showSheetStatus({ text: 'Re-queueing conversion…' });
+        await retryNotation(id);
+        refreshSheet({ force: true });
+      });
+      sheetStatus.appendChild(btn);
     }
   }
 

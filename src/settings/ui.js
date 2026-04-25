@@ -29,8 +29,10 @@ const TEMPLATE = `
           <div class="settings-row-value" data-role="key-range"></div>
         </div>
         <div class="settings-row">
-          <div class="settings-row-label">Note labels</div>
-          <div class="settings-row-value" data-role="label-mode"></div>
+          <div class="settings-row-label">Keyboard labels</div>
+          <div class="settings-row-value" data-role="label-mode">
+            <span class="settings-row-hint">FALLING NOTES ARE ALWAYS LABELED.</span>
+          </div>
         </div>
       </div>
 
@@ -202,6 +204,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
 
   function buildLabelMode() {
     const host = $('[data-role="label-mode"]');
+    const hint = host.querySelector('.settings-row-hint');
     host.innerHTML = '';
     const current = getSettings().labelMode || 'c-only';
     for (const [mode, label] of [['none','None'],['c-only','C keys only'],['all','All notes']]) {
@@ -213,6 +216,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
       btn.addEventListener('click', () => updateSettings({ labelMode: mode }));
       host.appendChild(btn);
     }
+    if (hint) host.appendChild(hint);
   }
 
   function buildColorRow(sel, settingKey, swatches) {
