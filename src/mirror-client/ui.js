@@ -686,7 +686,7 @@ export function mountMirrorClient(root, code) {
       sheetPollTimer = setTimeout(refreshRemoteSheet, 2500);
     } else if (result.state === 'failed') {
       showRemoteSheetStatus({
-        text: 'MuseScore couldn’t convert this MIDI.',
+        text: 'The converter couldn’t turn this MIDI into notation.',
         action: 'RETRY',
       });
     } else if (result.state === 'error') {

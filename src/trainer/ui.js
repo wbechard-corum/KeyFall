@@ -295,7 +295,7 @@ export function mountTrainer(root) {
       sheetPollTimer = setTimeout(refreshSheet, 2500);
     } else if (result.state === 'failed') {
       showSheetStatus({
-        text: 'MuseScore couldn’t convert this MIDI. The file may be malformed or use features the converter can’t handle.',
+        text: 'The converter couldn’t turn this MIDI into notation. The file may be malformed or use features the converter can’t handle.',
         action: 'RETRY',
       });
     } else if (result.state === 'error') {
