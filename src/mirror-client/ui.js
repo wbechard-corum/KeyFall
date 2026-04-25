@@ -6,6 +6,7 @@ import { DEMOS } from '../trainer/demos.js';
 import { getSong } from '../trainer/library.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
 import { getSetting, updateSettings } from '../shared/settings.js';
+import { renameSong, setSongStarred } from '../trainer/library.js';
 
 const TEMPLATE = `
   <div class="mirror-client-root">
@@ -273,17 +274,47 @@ export function mountMirrorClient(root, code) {
   // ─── Songs tab ───
   let songsBuilt = false;
   let songsFilter = '';
+  let songsSubtab = 'all';
+  let songsSelected = null;
+  let songsRenameTarget = null;
 
   function renderSongsTab() {
     const host = $('[data-role="songs"]');
     if (!songsBuilt) {
       host.innerHTML = `
+        <div class="mc-songs-tabs">
+          <button class="mc-songs-tab active" data-subtab="all">ALL</button>
+          <button class="mc-songs-tab" data-subtab="starred">★ STARRED</button>
+        </div>
         <div class="mc-songs-controls">
           <input class="mc-songs-search" type="search" placeholder="Search songs…" data-role="songs-search">
         </div>
-        <div class="mc-songs-list" data-role="songs-list"></div>
+        <div class="mc-songs-list-wrap">
+          <div class="mc-songs-list" data-role="songs-list"></div>
+          <div class="mc-songs-jump" data-role="songs-jump"></div>
+        </div>
         <button class="mc-songs-load" data-role="songs-load">▶ LOAD ON HOST</button>
+
+        <div class="songs-modal hidden" data-role="songs-rename-modal">
+          <div class="songs-modal-backdrop" data-role="songs-rename-backdrop"></div>
+          <div class="songs-modal-card">
+            <div class="songs-modal-title">Rename song</div>
+            <input class="songs-modal-input" type="text" data-role="songs-rename-input" maxlength="200">
+            <div class="songs-modal-actions">
+              <button class="songs-modal-btn" data-action="songs-rename-cancel">Cancel</button>
+              <button class="songs-modal-btn primary" data-action="songs-rename-save">Save</button>
+            </div>
+          </div>
+        </div>
       `;
+      host.querySelectorAll('[data-subtab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          songsSubtab = btn.dataset.subtab;
+          host.querySelectorAll('[data-subtab]').forEach(b =>
+            b.classList.toggle('active', b === btn));
+          renderSongsList();
+        });
+      });
       host.querySelector('[data-role="songs-search"]').addEventListener('input', (e) => {
         songsFilter = (e.target.value || '').toLowerCase();
         renderSongsList();
@@ -293,41 +324,157 @@ export function mountMirrorClient(root, code) {
           client.sendCommand({ target: 'trainer', action: 'loadSongById', args: [songsSelected] });
         }
       });
+      host.querySelector('[data-action="songs-rename-cancel"]').addEventListener('click', closeSongsRename);
+      host.querySelector('[data-action="songs-rename-save"]').addEventListener('click', commitSongsRename);
+      host.querySelector('[data-role="songs-rename-backdrop"]').addEventListener('click', closeSongsRename);
+      host.querySelector('[data-role="songs-rename-input"]').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commitSongsRename();
+        else if (e.key === 'Escape') closeSongsRename();
+      });
       songsBuilt = true;
       refreshTrainerLibrary();
     }
     renderSongsList();
   }
 
-  let songsSelected = null;
+  function visibleSongs() {
+    const tabFiltered = songsSubtab === 'starred'
+      ? librarySnapshot.filter(r => r.starred)
+      : librarySnapshot;
+    const filtered = tabFiltered.filter(r => !songsFilter || r.name.toLowerCase().includes(songsFilter));
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   function renderSongsList() {
     const list = $('[data-role="songs-list"]');
+    const jumpHost = $('[data-role="songs-jump"]');
     if (!list) return;
     list.innerHTML = '';
-    const filtered = librarySnapshot.filter(r => !songsFilter || r.name.toLowerCase().includes(songsFilter));
-    if (filtered.length === 0) {
+    const rows = visibleSongs();
+    if (rows.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'mc-songs-empty';
-      empty.textContent = songsFilter ? 'No matches.' : 'No songs uploaded yet.';
+      empty.textContent = songsFilter
+        ? 'No matches.'
+        : songsSubtab === 'starred'
+          ? 'No starred songs yet — tap ☆ to add one.'
+          : 'No songs uploaded yet.';
       list.appendChild(empty);
+      jumpHost.innerHTML = '';
       return;
     }
-    for (const row of filtered) {
+
+    let lastLetter = null;
+    const letterAnchors = {};
+    for (const row of rows) {
+      const letter = (row.name[0] || '#').toUpperCase();
+      if (letter !== lastLetter) {
+        const header = document.createElement('div');
+        header.className = 'mc-songs-section';
+        header.textContent = letter;
+        list.appendChild(header);
+        letterAnchors[letter] = header;
+        lastLetter = letter;
+      }
+      list.appendChild(buildRemoteSongRow(row));
+    }
+    renderSongsJump(letterAnchors);
+  }
+
+  function buildRemoteSongRow(row) {
+    const item = document.createElement('div');
+    item.className = 'mc-songs-item' + (songsSelected === row.id ? ' active' : '');
+
+    const star = document.createElement('button');
+    star.className = 'mc-songs-item-star' + (row.starred ? ' on' : '');
+    star.textContent = row.starred ? '★' : '☆';
+    star.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const next = !row.starred;
+      row.starred = next;
+      star.classList.toggle('on', next);
+      star.textContent = next ? '★' : '☆';
+      try { await setSongStarred(row.id, next); }
+      catch (err) {
+        row.starred = !next;
+        star.classList.toggle('on', !next);
+        star.textContent = !next ? '★' : '☆';
+      }
+      if (songsSubtab === 'starred' && !row.starred) renderSongsList();
+    });
+
+    const info = document.createElement('button');
+    info.className = 'mc-songs-item-info';
+    info.innerHTML = `
+      <span class="mc-songs-item-name"></span>
+      <span class="mc-songs-item-meta">${formatSize(row.size)}</span>
+    `;
+    info.querySelector('.mc-songs-item-name').textContent = row.name;
+    info.addEventListener('click', () => {
+      songsSelected = row.id;
+      renderSongsList();
+    });
+    info.addEventListener('dblclick', () => {
+      client.sendCommand({ target: 'trainer', action: 'loadSongById', args: [row.id] });
+    });
+
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'mc-songs-item-rename';
+    renameBtn.textContent = '✎';
+    renameBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSongsRename(row);
+    });
+
+    item.appendChild(star);
+    item.appendChild(info);
+    item.appendChild(renameBtn);
+    return item;
+  }
+
+  function renderSongsJump(letterAnchors) {
+    const host = $('[data-role="songs-jump"]');
+    host.innerHTML = '';
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
+    for (const letter of letters) {
+      const present = !!letterAnchors[letter];
       const btn = document.createElement('button');
-      btn.className = 'mc-songs-item' + (songsSelected === row.id ? ' active' : '');
-      btn.innerHTML = `
-        <span class="mc-songs-item-name">${escapeHtml(row.name)}</span>
-        <span class="mc-songs-item-meta">${formatSize(row.size)}</span>
-      `;
+      btn.className = 'mc-songs-jump-letter' + (present ? '' : ' faint');
+      btn.textContent = letter;
+      btn.disabled = !present;
       btn.addEventListener('click', () => {
-        songsSelected = row.id;
-        renderSongsList();
+        const target = letterAnchors[letter];
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
-      btn.addEventListener('dblclick', () => {
-        client.sendCommand({ target: 'trainer', action: 'loadSongById', args: [row.id] });
-      });
-      list.appendChild(btn);
+      host.appendChild(btn);
+    }
+  }
+
+  function openSongsRename(row) {
+    songsRenameTarget = row;
+    const modal = $('[data-role="songs-rename-modal"]');
+    const input = $('[data-role="songs-rename-input"]');
+    input.value = row.name;
+    modal.classList.remove('hidden');
+    setTimeout(() => { input.focus(); input.select(); }, 30);
+  }
+
+  function closeSongsRename() {
+    songsRenameTarget = null;
+    $('[data-role="songs-rename-modal"]')?.classList.add('hidden');
+  }
+
+  async function commitSongsRename() {
+    if (!songsRenameTarget) return;
+    const next = $('[data-role="songs-rename-input"]').value.trim();
+    if (!next || next === songsRenameTarget.name) { closeSongsRename(); return; }
+    try {
+      await renameSong(songsRenameTarget.id, next);
+      songsRenameTarget.name = next;
+      closeSongsRename();
+      renderSongsList();
+    } catch {
+      closeSongsRename();
     }
   }
 
@@ -336,10 +483,6 @@ export function mountMirrorClient(root, code) {
     if (n < 1024) return `${n}B`;
     if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}K`;
     return `${(n / 1024 / 1024).toFixed(1)}M`;
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   // ─── Settings tab ───
