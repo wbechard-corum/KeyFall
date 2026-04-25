@@ -10,6 +10,7 @@ import { setSection, setCommandHandler } from '../shared/app-mirror.js';
 import { getSong } from './library.js';
 import { DEMOS } from './demos.js';
 import { saveSong } from './library.js';
+import { createSheet } from './sheet.js';
 
 const TEMPLATE = `
   <div class="trainer-root">
@@ -57,6 +58,11 @@ const TEMPLATE = `
         <span class="dot" style="background:var(--left-hand)"></span>L
       </div>
 
+      <div class="ctrl-group view-toggle" data-role="view-toggle">
+        <button class="ctrl-btn active" data-action="view-notes">NOTES</button>
+        <button class="ctrl-btn" data-action="view-sheet">SHEET</button>
+      </div>
+
       <button class="ctrl-btn" data-action="open">OPEN</button>
       <input type="file" class="file-input" data-role="file-input" accept=".mid,.midi">
     </div>
@@ -67,6 +73,10 @@ const TEMPLATE = `
 
     <div class="canvas-wrap" data-role="canvas-wrap">
       <canvas data-role="canvas"></canvas>
+      <div class="sheet-wrap hidden" data-role="sheet-wrap">
+        <div class="sheet-status" data-role="sheet-status"></div>
+        <div class="sheet-host" data-role="sheet-host"></div>
+      </div>
       <div class="drop-overlay" data-role="drop-overlay">
         <div class="drop-icon">♪</div>
         <div class="drop-title">Load a song</div>
@@ -88,6 +98,12 @@ export function mountTrainer(root) {
 
   const canvas = $('[data-role="canvas"]');
   const canvasWrap = $('[data-role="canvas-wrap"]');
+  const sheetWrap = $('[data-role="sheet-wrap"]');
+  const sheetHost = $('[data-role="sheet-host"]');
+  const sheetStatus = $('[data-role="sheet-status"]');
+  const sheet = createSheet(sheetHost);
+  let viewMode = 'notes';
+  let sheetPollTimer = null;
   const renderer = createRenderer(canvas);
 
   // pressedKeys carries both membership and velocity so the piano
@@ -149,6 +165,7 @@ export function mountTrainer(root) {
       trackMuted: playback.state.trackMuted,
       isPlaying: playback.isPlaying(),
     });
+    if (viewMode === 'sheet') sheet?.moveCursor(playback.state.currentTime);
     updateProgress();
     publishTrainerState();
   }
@@ -181,6 +198,7 @@ export function mountTrainer(root) {
       duration: song.duration,
       notes: song.notes.length,
     };
+    if (viewMode === 'sheet') refreshSheet();
     render();
   }
 
@@ -245,6 +263,45 @@ export function mountTrainer(root) {
     $('[data-role="file-input"]').click();
   }
 
+  function setView(mode) {
+    viewMode = mode;
+    canvas.classList.toggle('hidden', mode !== 'notes');
+    sheetWrap.classList.toggle('hidden', mode !== 'sheet');
+    $('[data-action="view-notes"]').classList.toggle('active', mode === 'notes');
+    $('[data-action="view-sheet"]').classList.toggle('active', mode === 'sheet');
+    if (mode === 'sheet') refreshSheet();
+    else stopSheetPoll();
+  }
+
+  function stopSheetPoll() {
+    if (sheetPollTimer) { clearTimeout(sheetPollTimer); sheetPollTimer = null; }
+  }
+
+  async function refreshSheet() {
+    stopSheetPoll();
+    const id = currentSongMeta?.id;
+    if (!id) {
+      sheet.reset();
+      sheetStatus.textContent = 'Load a library song to see its sheet music.';
+      sheetStatus.classList.remove('hidden');
+      return;
+    }
+    sheetStatus.textContent = 'Loading notation…';
+    sheetStatus.classList.remove('hidden');
+    const result = await sheet.load(id);
+    if (result.state === 'ready') {
+      sheetStatus.classList.add('hidden');
+      sheet.moveCursor(playback.state.currentTime);
+    } else if (result.state === 'pending') {
+      sheetStatus.textContent = 'Converting MIDI to notation… (this can take a few seconds)';
+      sheetPollTimer = setTimeout(refreshSheet, 2000);
+    } else if (result.state === 'error') {
+      sheetStatus.textContent = `Couldn't render notation: ${result.error}`;
+    } else {
+      sheetStatus.textContent = 'No notation for this song.';
+    }
+  }
+
   function setupControls() {
     $('[data-action="play"]').addEventListener('click', () => {
       if (!playback.state.song) return;
@@ -261,6 +318,9 @@ export function mountTrainer(root) {
       setMidiOutEnabled(!e.currentTarget.classList.contains('active'));
     });
     if (midiOutEnabled) $('[data-action="midi-out"]').classList.add('active');
+
+    $('[data-action="view-notes"]').addEventListener('click', () => setView('notes'));
+    $('[data-action="view-sheet"]').addEventListener('click', () => setView('sheet'));
 
     const keysSelect = $('[data-action="keys"]');
     const savedRange = Number(getSetting('keyboardRange') || 88);
@@ -505,6 +565,7 @@ export function mountTrainer(root) {
       resizeObserver.disconnect();
       unsubscribeMIDI();
       unsubscribeSettings();
+      stopSheetPoll();
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('keydown', handleKeydown);
     },

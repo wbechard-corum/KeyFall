@@ -1,6 +1,6 @@
 {
   "name": "keyfall",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Open-source piano trainer and universal MIDI keyboard controller.",
   "type": "module",
   "scripts": {
@@ -9,6 +9,9 @@
     "preview": "vite preview"
   },
   "license": "MIT",
+  "dependencies": {
+    "opensheetmusicdisplay": "^1.8.7"
+  },
   "devDependencies": {
     "vite": "^5.4.0"
   }

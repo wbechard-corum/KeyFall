@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { promises as fs } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 
 const PORT = Number(process.env.PORT || 8081);
@@ -11,6 +12,8 @@ const DATA_DIR = process.env.DATA_DIR || '/data';
 const SONGS_DIR = path.join(DATA_DIR, 'songs');
 const INDEX_FILE = path.join(SONGS_DIR, 'index.json');
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 5 * 1024 * 1024);
+const MSCORE_CMD = process.env.MSCORE_CMD || 'mscore-headless';
+const CONVERSION_TIMEOUT_MS = Number(process.env.CONVERSION_TIMEOUT_MS || 60 * 1000);
 
 // ───────── Song storage ─────────
 
@@ -41,10 +44,104 @@ async function createSong(name, bytes) {
   const filename = `${id}.mid`;
   await fs.writeFile(path.join(SONGS_DIR, filename), Buffer.from(bytes));
   const rows = await readIndex();
-  const record = { id, name, filename, size: bytes.byteLength ?? bytes.length, addedAt: Date.now(), starred: false };
+  const record = {
+    id, name, filename,
+    size: bytes.byteLength ?? bytes.length,
+    addedAt: Date.now(),
+    starred: false,
+    notationStatus: 'pending',
+  };
   rows.push(record);
   await writeIndex(rows);
+  // Kick off conversion in the background — uploads stay snappy and
+  // the song is playable immediately; the staff just lights up once
+  // the .musicxml lands.
+  scheduleConversion(record.id).catch(err =>
+    console.warn(`Conversion enqueue failed for ${record.id}:`, err.message));
   return record;
+}
+
+// ───────── MIDI → MusicXML conversion ─────────
+
+function notationPath(id) {
+  return path.join(SONGS_DIR, `${id}.musicxml`);
+}
+
+function convertMidi(srcPath, outPath) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(MSCORE_CMD, ['-o', outPath, srcPath], { stdio: 'pipe' });
+    let stderr = '';
+    proc.stderr.on('data', chunk => { stderr += chunk.toString(); });
+    const timer = setTimeout(() => {
+      proc.kill('SIGKILL');
+      reject(new Error(`mscore timed out after ${CONVERSION_TIMEOUT_MS}ms`));
+    }, CONVERSION_TIMEOUT_MS);
+    proc.on('error', err => { clearTimeout(timer); reject(err); });
+    proc.on('exit', code => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`mscore exit ${code}: ${stderr.slice(0, 400)}`));
+    });
+  });
+}
+
+// Single-file mutex to keep mscore invocations sequential. Running
+// many xvfb sessions in parallel chews RAM and gains nothing.
+let conversionChain = Promise.resolve();
+async function scheduleConversion(id) {
+  conversionChain = conversionChain.then(() => runConversion(id));
+  return conversionChain;
+}
+
+async function runConversion(id) {
+  const rows = await readIndex();
+  const row = rows.find(r => r.id === id);
+  if (!row) return;
+  const src = path.join(SONGS_DIR, row.filename);
+  const dst = notationPath(id);
+  try {
+    await fs.access(src);
+  } catch {
+    await markStatus(id, 'failed');
+    return;
+  }
+  try {
+    await convertMidi(src, dst);
+    // Make sure the file actually showed up before declaring victory —
+    // some MIDIs cause mscore to exit 0 but produce no output.
+    const stat = await fs.stat(dst).catch(() => null);
+    if (!stat || stat.size === 0) throw new Error('output empty');
+    await markStatus(id, 'ready');
+  } catch (err) {
+    console.warn(`MIDI→MusicXML conversion failed for ${id}: ${err.message}`);
+    await markStatus(id, 'failed');
+  }
+}
+
+async function markStatus(id, status) {
+  const rows = await readIndex();
+  const row = rows.find(r => r.id === id);
+  if (!row) return;
+  row.notationStatus = status;
+  await writeIndex(rows);
+}
+
+async function backfillNotation() {
+  const rows = await readIndex();
+  let queued = 0;
+  for (const row of rows) {
+    const dst = notationPath(row.id);
+    const have = await fs.stat(dst).then(s => s.size > 0).catch(() => false);
+    if (have) {
+      if (row.notationStatus !== 'ready') await markStatus(row.id, 'ready');
+      continue;
+    }
+    if (row.notationStatus === 'failed') continue;  // don't loop on broken MIDIs
+    await markStatus(row.id, 'pending');
+    scheduleConversion(row.id);
+    queued += 1;
+  }
+  if (queued > 0) console.log(`Backfilling notation for ${queued} song(s)…`);
 }
 
 async function getSongRecord(id) {
@@ -158,6 +255,7 @@ const http = createServer(async (req, res) => {
       sendJson(res, 200, rows.map(r => ({
         id: r.id, name: r.name, size: r.size,
         addedAt: r.addedAt, starred: !!r.starred,
+        notationStatus: r.notationStatus || 'unknown',
       })));
       return;
     }
@@ -167,7 +265,11 @@ const http = createServer(async (req, res) => {
       const bytes = await readBody(req, MAX_UPLOAD_BYTES);
       if (bytes.length === 0) { sendJson(res, 400, { error: 'empty body' }); return; }
       const record = await createSong(name, bytes);
-      sendJson(res, 201, { id: record.id, name: record.name, size: record.size, addedAt: record.addedAt });
+      sendJson(res, 201, {
+        id: record.id, name: record.name, size: record.size,
+        addedAt: record.addedAt, starred: !!record.starred,
+        notationStatus: record.notationStatus,
+      });
       return;
     }
 
@@ -200,9 +302,40 @@ const http = createServer(async (req, res) => {
         sendJson(res, 200, {
           id: updated.id, name: updated.name, size: updated.size,
           addedAt: updated.addedAt, starred: !!updated.starred,
+          notationStatus: updated.notationStatus || 'unknown',
         });
         return;
       }
+    }
+
+    const notationMatch = pathname.match(/^\/api\/songs\/([a-f0-9-]{36})\/notation$/i);
+    if (notationMatch && req.method === 'GET') {
+      const id = notationMatch[1];
+      const record = await getSongRecord(id);
+      if (!record) { sendJson(res, 404, { error: 'not found' }); return; }
+      const dst = notationPath(id);
+      const stat = await fs.stat(dst).catch(() => null);
+      if (!stat || stat.size === 0) {
+        sendJson(res, 202, { status: record.notationStatus || 'pending' });
+        return;
+      }
+      res.writeHead(200, {
+        'content-type': 'application/vnd.recordare.musicxml+xml; charset=utf-8',
+        'content-length': stat.size,
+        'cache-control': 'private, max-age=300',
+      });
+      createReadStream(dst).pipe(res);
+      return;
+    }
+    const retryMatch = pathname.match(/^\/api\/songs\/([a-f0-9-]{36})\/notation\/retry$/i);
+    if (retryMatch && req.method === 'POST') {
+      const id = retryMatch[1];
+      const record = await getSongRecord(id);
+      if (!record) { sendJson(res, 404, { error: 'not found' }); return; }
+      await markStatus(id, 'pending');
+      scheduleConversion(id).catch(() => {});
+      sendJson(res, 202, { status: 'pending' });
+      return;
     }
 
     res.writeHead(404);
@@ -294,6 +427,8 @@ wss.on('connection', (ws) => {
 // ───────── Boot ─────────
 
 await ensureStorage();
+backfillNotation().catch(err =>
+  console.warn('Notation backfill failed:', err.message));
 
 http.listen(PORT, () => {
   console.log(`KeyFall server (songs API + mirror relay) listening on :${PORT}`);

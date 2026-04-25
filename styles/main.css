@@ -460,6 +460,78 @@ select option {
 
 canvas { display: block; width: 100%; height: 100%; }
 
+.view-toggle {
+  display: flex;
+  background: var(--inset);
+  padding: 3px;
+  border-radius: 5px;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+  gap: 0;
+}
+
+.view-toggle .ctrl-btn {
+  background: transparent;
+  box-shadow: none;
+  padding: 6px 12px;
+}
+
+.view-toggle .ctrl-btn.active {
+  background: var(--plate);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.08),
+    0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* Sheet music view (background of LIVE) */
+.sheet-wrap {
+  position: absolute;
+  inset: 0;
+  background: #f4efe6;
+  overflow: auto;
+  padding: 20px 24px;
+}
+
+.sheet-wrap.hidden { display: none; }
+
+.sheet-host {
+  width: 100%;
+  min-height: 100%;
+  position: relative;
+}
+
+.sheet-host svg { display: block; max-width: 100%; }
+
+.sheet-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(244, 239, 230, 0.92);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 14px;
+  color: #555;
+  padding: 24px;
+  text-align: center;
+  z-index: 5;
+}
+
+.sheet-status.hidden { display: none; }
+
+.sheet-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 80px;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(77,214,195,0.7);
+  border-radius: 2px;
+  pointer-events: none;
+  transition: transform 0.05s linear;
+  z-index: 4;
+}
+
 .drop-overlay {
   position: absolute;
   inset: 0;
