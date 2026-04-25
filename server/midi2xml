@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Convert a single MIDI file to MusicXML using music21.
+
+Usage: midi2xml INPUT.mid OUTPUT.musicxml
+"""
+import sys
+
+if len(sys.argv) != 3:
+    sys.exit("usage: midi2xml INPUT.mid OUTPUT.musicxml")
+
+from music21 import converter
+
+score = converter.parse(sys.argv[1])
+score.write("musicxml", fp=sys.argv[2])

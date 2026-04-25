@@ -12,9 +12,10 @@ RUN apt-get update \
   && pip3 install --break-system-packages --no-cache-dir 'music21>=9.1' \
   && rm -rf /var/lib/apt/lists/*
 
-# Tiny wrapper so Node can shell out to a stable command name.
-RUN printf '#!/usr/bin/env python3\nimport sys\nfrom music21 import converter\nif len(sys.argv) != 3:\n    sys.exit("usage: midi2xml input.mid output.musicxml")\nscore = converter.parse(sys.argv[1])\nscore.write("musicxml", fp=sys.argv[2])\n' > /usr/local/bin/midi2xml \
-  && chmod +x /usr/local/bin/midi2xml
+# Copy the conversion script in so its content is verifiable from
+# the build context rather than embedded in a printf heredoc.
+COPY midi2xml /usr/local/bin/midi2xml
+RUN chmod +x /usr/local/bin/midi2xml
 
 WORKDIR /app
 COPY package.json ./

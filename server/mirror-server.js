@@ -11,6 +11,7 @@ const ROOM_IDLE_MS = Number(process.env.ROOM_IDLE_MS || 10 * 60 * 1000);
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const SONGS_DIR = path.join(DATA_DIR, 'songs');
 const INDEX_FILE = path.join(SONGS_DIR, 'index.json');
+const INDEX_BACKUP = path.join(SONGS_DIR, 'index.json.backup');
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 5 * 1024 * 1024);
 const MSCORE_CMD = process.env.NOTATION_CMD || 'midi2xml';
 const CONVERSION_TIMEOUT_MS = Number(process.env.CONVERSION_TIMEOUT_MS || 60 * 1000);
@@ -19,6 +20,24 @@ const CONVERSION_TIMEOUT_MS = Number(process.env.CONVERSION_TIMEOUT_MS || 60 * 1
 
 async function ensureStorage() {
   await fs.mkdir(SONGS_DIR, { recursive: true });
+  // Best-effort restore from backup if the live index is missing
+  // or empty but the backup looks fine. Catches the previous
+  // race-condition damage at boot.
+  let liveOk = false;
+  try {
+    const stat = await fs.stat(INDEX_FILE);
+    liveOk = stat.size > 2;  // anything bigger than "[]" is interesting
+  } catch { liveOk = false; }
+  if (!liveOk) {
+    try {
+      const backupStat = await fs.stat(INDEX_BACKUP);
+      if (backupStat.size > 2) {
+        await fs.copyFile(INDEX_BACKUP, INDEX_FILE);
+        console.log('Restored index.json from backup.');
+        return;
+      }
+    } catch { /* no backup, continue */ }
+  }
   try { await fs.access(INDEX_FILE); }
   catch { await fs.writeFile(INDEX_FILE, '[]'); }
 }
@@ -28,10 +47,26 @@ async function readIndex() {
   try { return JSON.parse(raw); } catch { return []; }
 }
 
-async function writeIndex(rows) {
-  const tmp = INDEX_FILE + '.tmp';
-  await fs.writeFile(tmp, JSON.stringify(rows, null, 2));
-  await fs.rename(tmp, INDEX_FILE);
+// All writes go through writeIndex which is serialised by a Promise
+// chain. The previous tmp+rename pattern raced when multiple async
+// markStatus calls overlapped and one would unlink the tmp before
+// another's rename. With the chain below only one writeIndex is
+// in flight at any time, so the rename always sees its own tmp.
+let writeChain = Promise.resolve();
+function writeIndex(rows) {
+  writeChain = writeChain.then(async () => {
+    const tmp = INDEX_FILE + '.tmp';
+    const json = JSON.stringify(rows, null, 2);
+    await fs.writeFile(tmp, json);
+    await fs.rename(tmp, INDEX_FILE);
+    // Maintain a backup so the next boot has something to recover
+    // from if the live file is corrupted again.
+    try { await fs.writeFile(INDEX_BACKUP, json); }
+    catch (e) { console.warn('index backup write failed:', e.message); }
+  }).catch(err => {
+    console.warn('writeIndex failed:', err.message);
+  });
+  return writeChain;
 }
 
 async function listSongs() {
@@ -146,10 +181,12 @@ async function backfillNotation() {
   if (queued > 0) console.log(`Backfilling notation for ${queued} song(s) using ${MSCORE_CMD}…`);
 }
 
-// If the index gets reset but the volume still has the .mid files
-// (e.g. when the volume mount was missing on a previous deployment
-// and the user just fixed it, or after a partial restore), walk
-// the songs directory and re-add anything orphaned.
+// If the index has lost track of a .mid file that's actually on
+// disk, re-add it with a placeholder name. ensureStorage() already
+// restores from index.json.backup when possible, so this only kicks
+// in for genuine orphans (a file appeared in the volume that was
+// never in any index — usually only happens if someone scp'd a MIDI
+// straight into /data/songs).
 async function recoverOrphanSongs() {
   const rows = await readIndex();
   const known = new Set(rows.map(r => r.id));
