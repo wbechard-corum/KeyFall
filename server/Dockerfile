@@ -2,27 +2,19 @@
 
 FROM node:20-bookworm-slim
 
-# MuseScore + Xvfb so we can run mscore headlessly to convert MIDI
-# files into MusicXML server-side. The Qt app insists on an X
-# display being available even when -o is the only operation.
+# music21 (Python) handles MIDI -> MusicXML server-side. No Qt, no
+# Xvfb, no display — just a Python module call.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       musescore3 \
-       xvfb \
-       libgl1 \
-       libfontconfig1 \
-       libxrender1 \
-       libxext6 \
-       libxkbcommon0 \
-       libdbus-1-3 \
+       python3 \
+       python3-pip \
        wget \
+  && pip3 install --break-system-packages --no-cache-dir 'music21>=9.1' \
   && rm -rf /var/lib/apt/lists/*
 
-# Wrap whichever mscore binary the distribution ships under
-# xvfb-run so we can call it from Node without worrying about
-# DISPLAY or the Qt platform plugin.
-RUN printf '#!/bin/sh\nMSC=$(command -v mscore3 || command -v mscore || command -v musescore3 || command -v musescore)\nif [ -z "$MSC" ]; then\n  echo "No MuseScore binary found" >&2\n  exit 127\nfi\nexec xvfb-run -a -s "-screen 0 800x600x24" "$MSC" "$@"\n' > /usr/local/bin/mscore-headless \
-  && chmod +x /usr/local/bin/mscore-headless
+# Tiny wrapper so Node can shell out to a stable command name.
+RUN printf '#!/usr/bin/env python3\nimport sys\nfrom music21 import converter\nif len(sys.argv) != 3:\n    sys.exit("usage: midi2xml input.mid output.musicxml")\nscore = converter.parse(sys.argv[1])\nscore.write("musicxml", fp=sys.argv[2])\n' > /usr/local/bin/midi2xml \
+  && chmod +x /usr/local/bin/midi2xml
 
 WORKDIR /app
 COPY package.json ./

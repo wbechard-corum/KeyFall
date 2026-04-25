@@ -12,7 +12,7 @@ const DATA_DIR = process.env.DATA_DIR || '/data';
 const SONGS_DIR = path.join(DATA_DIR, 'songs');
 const INDEX_FILE = path.join(SONGS_DIR, 'index.json');
 const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 5 * 1024 * 1024);
-const MSCORE_CMD = process.env.MSCORE_CMD || 'mscore-headless';
+const MSCORE_CMD = process.env.NOTATION_CMD || 'midi2xml';
 const CONVERSION_TIMEOUT_MS = Number(process.env.CONVERSION_TIMEOUT_MS || 60 * 1000);
 
 // ───────── Song storage ─────────
@@ -69,7 +69,7 @@ function notationPath(id) {
 
 function convertMidi(srcPath, outPath) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(MSCORE_CMD, ['-o', outPath, srcPath], { stdio: 'pipe' });
+    const proc = spawn(MSCORE_CMD, [srcPath, outPath], { stdio: 'pipe' });
     let stderr = '';
     proc.stderr.on('data', chunk => { stderr += chunk.toString(); });
     const timer = setTimeout(() => {
@@ -107,22 +107,21 @@ async function runConversion(id) {
   }
   try {
     await convertMidi(src, dst);
-    // Make sure the file actually showed up before declaring victory —
-    // some MIDIs cause mscore to exit 0 but produce no output.
     const stat = await fs.stat(dst).catch(() => null);
     if (!stat || stat.size === 0) throw new Error('output empty');
-    await markStatus(id, 'ready');
+    await markStatus(id, 'ready', { converter: MSCORE_CMD });
   } catch (err) {
     console.warn(`MIDI→MusicXML conversion failed for ${id}: ${err.message}`);
-    await markStatus(id, 'failed');
+    await markStatus(id, 'failed', { converter: MSCORE_CMD });
   }
 }
 
-async function markStatus(id, status) {
+async function markStatus(id, status, extra = {}) {
   const rows = await readIndex();
   const row = rows.find(r => r.id === id);
   if (!row) return;
   row.notationStatus = status;
+  for (const k of Object.keys(extra)) row[k] = extra[k];
   await writeIndex(rows);
 }
 
@@ -133,15 +132,18 @@ async function backfillNotation() {
     const dst = notationPath(row.id);
     const have = await fs.stat(dst).then(s => s.size > 0).catch(() => false);
     if (have) {
-      if (row.notationStatus !== 'ready') await markStatus(row.id, 'ready');
+      if (row.notationStatus !== 'ready') await markStatus(row.id, 'ready', { converter: MSCORE_CMD });
       continue;
     }
-    if (row.notationStatus === 'failed') continue;  // don't loop on broken MIDIs
+    // Retry failed entries when the converter has changed since the
+    // last attempt. Stops boot from spinning on permanently-broken
+    // MIDIs once they've failed under the current converter too.
+    if (row.notationStatus === 'failed' && row.converter === MSCORE_CMD) continue;
     await markStatus(row.id, 'pending');
     scheduleConversion(row.id);
     queued += 1;
   }
-  if (queued > 0) console.log(`Backfilling notation for ${queued} song(s)…`);
+  if (queued > 0) console.log(`Backfilling notation for ${queued} song(s) using ${MSCORE_CMD}…`);
 }
 
 async function getSongRecord(id) {
