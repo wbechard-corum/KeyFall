@@ -131,10 +131,36 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
   }
 
   function reportKeyPress(midiNote) {
-    if (state.waitMode && state.waitingForNote && state.waitingForNote.midi === midiNote) {
+    if (!state.waitMode || !state.song) return;
+    // Fast path: we're already waiting on this note.
+    if (state.waitingForNote && state.waitingForNote.midi === midiNote) {
       state.waitingForNote.hit = true;
       state.waitingForNote = null;
       onWaitChange?.(null);
+      return;
+    }
+    // Slow path: the user pressed before checkWait() ran (one frame
+    // race). Scan a small window of upcoming unhit notes for a match
+    // so the press isn't dropped. If we find one, fast-forward
+    // currentTime to it so the visual playhead doesn't lag.
+    const lookBack = 0.1;
+    const lookAhead = 0.25;
+    for (const note of state.song.notes) {
+      if (note.hit) continue;
+      if (state.trackMuted[note.track || 0]) continue;
+      if (note.startTime < state.currentTime - lookBack) continue;
+      if (note.startTime > state.currentTime + lookAhead) break;
+      if (note.midi === midiNote) {
+        note.hit = true;
+        if (state.waitingForNote) {
+          state.waitingForNote = null;
+          onWaitChange?.(null);
+        }
+        if (state.currentTime < note.startTime) {
+          state.currentTime = note.startTime;
+        }
+        return;
+      }
     }
   }
 

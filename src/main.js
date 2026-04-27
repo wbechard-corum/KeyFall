@@ -193,6 +193,14 @@ function boot() {
   setupMIDIStatus();
   setupRemoteModal();
 
+  // Eagerly mount trainer + controller so their mirror command
+  // handlers are registered even if the user hasn't visited those
+  // tabs yet. Without this, a remote tapping a patch or selecting
+  // a song would silently drop the command when the host last had
+  // SETTINGS or SONGS active. Their DOM is hidden until tabbed to.
+  ensureMounted('trainer');
+  ensureMounted('controller');
+
   // The Wake Lock API requires a recent user gesture. First tap or
   // click anywhere in the app triggers the request once; subsequent
   // visibility changes re-acquire automatically.
