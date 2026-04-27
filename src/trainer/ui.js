@@ -496,6 +496,9 @@ export function mountTrainer(root) {
       waitMode: playback.state.waitMode,
       trackMuted: [...playback.state.trackMuted],
       waitingForNote: playback.state.waitingForNote?.midi ?? null,
+      waitingForChord: playback.state.waitingForChord
+        ? playback.state.waitingForChord.filter(n => !n.hit).map(n => n.midi)
+        : null,
       midiOutEnabled,
       // Array of [midi, velocity] so the client can rebuild a Map.
       pressedKeys: Array.from(pressedKeys.entries()),
