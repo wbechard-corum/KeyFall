@@ -53,11 +53,16 @@ export function createMirrorHost({ onCommand, onStatus } = {}) {
 
   const socket = createSocket({
     onOpen: (ws) => {
-      ws.send(JSON.stringify({ type: 'host' }));
+      // Ask for the code we had before. On a reconnect the server hands the
+      // same room back, so paired iPads reattach instead of being stranded
+      // on a code that no longer exists.
+      ws.send(JSON.stringify({ type: 'host', code }));
       onStatus?.({ state: 'connecting', code, peers });
     },
     onMessage: (msg) => {
       if (msg.type === 'hosted') {
+        // A resumed room keeps its peers; a brand-new one starts empty.
+        if (!msg.resumed || msg.code !== code) peers = 0;
         code = msg.code;
         onStatus?.({ state: 'ready', code, peers });
       } else if (msg.type === 'peer-joined') {
@@ -71,7 +76,8 @@ export function createMirrorHost({ onCommand, onStatus } = {}) {
       }
     },
     onClose: () => {
-      code = null;
+      // Keep `code` so the reconnect above can reclaim the same room; only
+      // the peer count is unknown until they rejoin.
       peers = 0;
       onStatus?.({ state: 'disconnected', code, peers });
     },
@@ -101,6 +107,10 @@ export function createMirrorClient(code, { onState, onStatus, onHostGone } = {})
       } else if (msg.type === 'host-gone') {
         onHostGone?.();
         onStatus?.({ state: 'host-gone', code });
+      } else if (msg.type === 'host-back') {
+        // Host reclaimed the room after a reconnect — we never had to drop
+        // the socket, so just clear the "host gone" state.
+        onStatus?.({ state: 'connected', code });
       }
     },
     onClose: () => onStatus?.({ state: 'disconnected', code }),

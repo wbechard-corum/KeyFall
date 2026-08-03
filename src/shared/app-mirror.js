@@ -17,9 +17,35 @@ const handlers = { controller: null, trainer: null };
 let status = { state: 'idle', code: null, peers: 0 };
 const statusListeners = new Set();
 
+// The trainer calls setSection() from its render loop — once per animation
+// frame while playing, plus a 10Hz idle tick. Publishing all of that put
+// ~60 JSON snapshots per second on the socket, which is a lot of radio for a
+// phone on battery. The client interpolates the playhead locally between
+// updates (see interpolateTime in mirror-client/ui.js), so a coalescing
+// throttle is invisible to it. Leading edge fires immediately so discrete
+// events — a key press, play/pause — stay responsive; the trailing edge
+// guarantees the final state is never left unsent.
+const PUBLISH_INTERVAL_MS = 50;
+let lastPublish = 0;
+let pendingPublish = null;
+
+function publishNow() {
+  lastPublish = performance.now();
+  host.publishState({ ...latest });
+}
+
 function emit() {
   if (!host) return;
-  host.publishState({ ...latest });
+  if (pendingPublish !== null) return;   // already scheduled; it'll pick up `latest`
+  const since = performance.now() - lastPublish;
+  if (since >= PUBLISH_INTERVAL_MS) {
+    publishNow();
+    return;
+  }
+  pendingPublish = setTimeout(() => {
+    pendingPublish = null;
+    if (host) publishNow();
+  }, PUBLISH_INTERVAL_MS - since);
 }
 
 export function onMirrorStatus(fn) {
@@ -56,6 +82,7 @@ export function startMirror() {
 
 export function stopMirror() {
   if (!host) return;
+  if (pendingPublish !== null) { clearTimeout(pendingPublish); pendingPublish = null; }
   host.close();
   host = null;
   status = { state: 'idle', code: null, peers: 0 };

@@ -5,7 +5,7 @@ import {
 } from '../midi/output.js';
 import { IDENTITY_REQUEST, buildSysEx, parseIdentityReply } from '../midi/sysex.js';
 import { onSysEx } from '../midi/input.js';
-import { getSetting, updateSettings } from '../shared/settings.js';
+import { getSetting, updateSettings, onSettingsChange } from '../shared/settings.js';
 import { loadProfile, loadDefaultProfile, matchProfileFromIdentity } from './profile-loader.js';
 
 export function createController() {
@@ -32,6 +32,24 @@ export function createController() {
       updateSettings({ selectedProfileId: null });
     }
   }
+
+  // The profile and channel pickers live in the Settings tab, which only
+  // wrote to storage. Nothing told the running controller, so switching
+  // profiles there did nothing until a full page reload.
+  onSettingsChange((_all, patch) => {
+    if ('selectedProfileId' in patch && patch.selectedProfileId
+        && patch.selectedProfileId !== state.profile.id) {
+      try {
+        setProfile(patch.selectedProfileId);
+      } catch (e) {
+        console.warn(`Cannot switch to profile "${patch.selectedProfileId}":`, e);
+      }
+    }
+    if ('midiChannel' in patch) {
+      const ch = Number(patch.midiChannel) & 0x0F;
+      if (ch !== state.channel) { state.channel = ch; emit(); }
+    }
+  });
 
   onSysEx((bytes) => {
     const reply = parseIdentityReply(bytes);

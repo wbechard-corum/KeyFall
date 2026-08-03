@@ -37,6 +37,17 @@ function refreshPortLists() {
     manufacturer: p.manufacturer || '',
     port: p,
   }));
+
+  // Drop a selection whose port has gone away. Without this, unplugging the
+  // keyboard left selectedOutputId pointing at a dead id — getOutputPort()
+  // returned null so nothing sent, and autoSelect() refused to pick the port
+  // back up on replug because the id was still (stale but) truthy.
+  if (state.selectedInputId && !state.inputs.some(p => p.id === state.selectedInputId)) {
+    state.selectedInputId = null;
+  }
+  if (state.selectedOutputId && !state.outputs.some(p => p.id === state.selectedOutputId)) {
+    state.selectedOutputId = null;
+  }
 }
 
 export function getState() {
@@ -57,6 +68,8 @@ export function onStateChange(listener) {
   return () => listeners.delete(listener);
 }
 
+let pendingAccess = null;
+
 export async function requestAccess({ sysex = true } = {}) {
   if (!state.supported) {
     state.error = 'Web MIDI is not supported in this browser. Use Chrome or Edge.';
@@ -65,8 +78,21 @@ export async function requestAccess({ sysex = true } = {}) {
   }
 
   if (state.access) return state.access;
+  // boot() and the Settings "grant access" button can both land here before
+  // the first request resolves. Share one in-flight promise so the browser
+  // only ever sees a single permission request.
+  if (pendingAccess) return pendingAccess;
 
   state.requested = true;
+  pendingAccess = doRequestAccess(sysex);
+  try {
+    return await pendingAccess;
+  } finally {
+    pendingAccess = null;
+  }
+}
+
+async function doRequestAccess(sysex) {
   try {
     state.access = await navigator.requestMIDIAccess({ sysex });
     state.sysexGranted = sysex;

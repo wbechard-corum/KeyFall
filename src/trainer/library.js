@@ -23,10 +23,18 @@ export async function getSong(id) {
     throw new Error(`get failed: ${res.status}`);
   }
   const bytes = await res.arrayBuffer();
-  // API returns raw .mid bytes; callers parse them. Preserve the name
-  // from the content-disposition header when available, otherwise the
-  // caller should have tracked it from the list.
-  return { id, bytes };
+  // API returns raw .mid bytes; callers parse them. Recover the name from
+  // the content-disposition header so callers that only have an id (the
+  // mirror client's "load this song" command) can still label it.
+  return { id, bytes, name: filenameFromDisposition(res.headers.get('content-disposition')) };
+}
+
+function filenameFromDisposition(header) {
+  if (!header) return null;
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]).replace(/\.midi?$/i, '') || null; }
+  catch { return m[1].replace(/\.midi?$/i, '') || null; }
 }
 
 export async function deleteSong(id) {

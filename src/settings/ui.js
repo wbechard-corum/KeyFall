@@ -4,7 +4,7 @@ import { onStateChange, getState, selectInput, selectOutput, requestAccess } fro
 import { IDENTITY_REQUEST, parseIdentityReply } from '../midi/sysex.js';
 import { sendSysEx } from '../midi/output.js';
 import { onSysEx } from '../midi/input.js';
-import { availableProfiles, loadProfile } from '../controller/profile-loader.js';
+import { availableProfiles, loadProfile, loadDefaultProfile } from '../controller/profile-loader.js';
 import {
   startMirror, stopMirror, isMirrorActive, onMirrorStatus,
 } from '../shared/app-mirror.js';
@@ -184,6 +184,14 @@ export function mountSettings(root, { onProfileChange } = {}) {
     syncSwatches('[data-role="bk-color"]', s.blackKeyColor);
     syncSwatches('[data-role="r-color"]',  s.rightHandColor);
     syncSwatches('[data-role="l-color"]',  s.leftHandColor);
+
+    // The controller view has its own profile picker, and auto-detection can
+    // switch profiles on its own. Keep this one in step instead of showing
+    // whatever was selected when the tab was first built.
+    const profileSel = $('[data-role="profile-select"]');
+    const wanted = s.selectedProfileId || loadDefaultProfile().id;
+    if (profileSel.value !== wanted) profileSel.value = wanted;
+    $('[data-role="channel-select"]').value = String(s.midiChannel ?? 0);
   }
 
   function buildKeyRange() {
@@ -257,7 +265,10 @@ export function mountSettings(root, { onProfileChange } = {}) {
       opt.textContent = `${p.manufacturer} ${p.model}`;
       sel.appendChild(opt);
     }
-    sel.value = getSettings().selectedProfileId || sel.options[0]?.value;
+    // Fall back to the profile the controller actually boots with, not
+    // whichever entry happens to be first in the registry — those differ,
+    // so a fresh install showed "Roland JUNO-G" while driving Generic GM.
+    sel.value = getSettings().selectedProfileId || loadDefaultProfile().id;
     sel.addEventListener('change', (e) => {
       updateSettings({ selectedProfileId: e.target.value });
       onProfileChange?.(e.target.value);
@@ -301,7 +312,10 @@ export function mountSettings(root, { onProfileChange } = {}) {
       return;
     }
     if (midi.error) {
-      container.innerHTML = `<div class="settings-empty">MIDI access denied: ${midi.error}</div>`;
+      const el = document.createElement('div');
+      el.className = 'settings-empty';
+      el.textContent = `MIDI access denied: ${midi.error}`;
+      container.appendChild(el);
       return;
     }
     const devices = kind === 'output' ? midi.outputs : midi.inputs;
@@ -314,21 +328,25 @@ export function mountSettings(root, { onProfileChange } = {}) {
     devices.forEach(d => {
       const el = document.createElement('button');
       el.className = 'settings-device' + (d.id === selectedId ? ' active' : '');
-      el.innerHTML = `
-        <span class="settings-device-name">${d.name}</span>
-        <span class="settings-device-meta">${d.manufacturer || '—'}</span>
-      `;
+      // Device names/manufacturers come from the OS and the hardware's USB
+      // descriptors — never interpolate them into markup.
+      const name = document.createElement('span');
+      name.className = 'settings-device-name';
+      name.textContent = d.name;
+      const meta = document.createElement('span');
+      meta.className = 'settings-device-meta';
+      meta.textContent = d.manufacturer || '—';
+      el.append(name, meta);
       el.addEventListener('click', () => pick(d.id));
       container.appendChild(el);
     });
   }
 
   function renderProfileNotes() {
-    const id = getSettings().selectedProfileId;
     const notesEl = $('[data-role="profile-notes"]');
-    if (!id) { notesEl.textContent = '—'; return; }
+    const id = getSettings().selectedProfileId;
     try {
-      const profile = loadProfile(id);
+      const profile = id ? loadProfile(id) : loadDefaultProfile();
       notesEl.textContent = profile.notes || '—';
     } catch { notesEl.textContent = '—'; }
   }
@@ -379,6 +397,8 @@ export function mountSettings(root, { onProfileChange } = {}) {
       helpEl.textContent = 'Start mirroring to get a pairing code.';
     }
   }
+
+  renderAll();
 
   return {
     destroy() {

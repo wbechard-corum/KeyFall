@@ -128,23 +128,30 @@ export function mountTrainer(root) {
   });
 
   let midiOutEnabled = !!getSetting('trainerMidiOut');
-  const activeOutNotes = new Set();
+  // midi note → pending note-off timer. Keyed by note so a repeated pitch
+  // cancels its predecessor's timer; otherwise the first note's note-off
+  // fired partway through the second one and chopped it off.
+  const activeOutNotes = new Map();
 
   function sendNoteToKeyboard(note) {
     const channel = getSetting('midiChannel') ?? 0;
     const velocity = note.velocity || 80;
-    const dur = Math.max(0.02, note.endTime - note.startTime);
+    const dur = Math.max(0.02, (note.endTime - note.startTime) / (playback.state.playSpeed || 1));
+    const existing = activeOutNotes.get(note.midi);
+    if (existing !== undefined) clearTimeout(existing);
     sendNoteOn(channel, note.midi, velocity);
-    activeOutNotes.add(note.midi);
-    setTimeout(() => {
+    activeOutNotes.set(note.midi, setTimeout(() => {
       sendNoteOff(channel, note.midi);
       activeOutNotes.delete(note.midi);
-    }, dur * 1000);
+    }, dur * 1000));
   }
 
   function panicAllOutNotes() {
     const channel = getSetting('midiChannel') ?? 0;
-    for (const n of activeOutNotes) sendNoteOff(channel, n);
+    for (const [note, timer] of activeOutNotes) {
+      clearTimeout(timer);
+      sendNoteOff(channel, note);
+    }
     activeOutNotes.clear();
   }
 
@@ -427,6 +434,12 @@ export function mountTrainer(root) {
     });
   }
 
+  // pointerId → midi note, so releasing one finger only releases the key
+  // that finger is holding. The old handler released *every* entry in
+  // pressedKeys, which also cleared notes being held down on the physical
+  // MIDI keyboard, and dragging off the canvas left keys stuck on.
+  const touchNotes = new Map();
+
   function setupTouchPiano() {
     canvas.addEventListener('pointerdown', (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -434,14 +447,25 @@ export function mountTrainer(root) {
       const y = e.clientY - rect.top;
       const { H, pianoHeight, layout } = renderer.getState();
       const note = keyAtPoint(layout, x, y, H - pianoHeight, pianoHeight);
-      if (note !== null) noteOn(note);
+      if (note === null) return;
+      e.preventDefault();
+      // Capture so pointerup still reaches us if the finger slides off the
+      // canvas mid-press.
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* not supported */ }
+      touchNotes.set(e.pointerId, note);
+      noteOn(note);
     });
-    canvas.addEventListener('pointerup', () => {
-      for (const note of Array.from(pressedKeys.keys())) noteOff(note);
-    });
-    canvas.addEventListener('pointercancel', () => {
-      for (const note of Array.from(pressedKeys.keys())) noteOff(note);
-    });
+
+    const releasePointer = (e) => {
+      const note = touchNotes.get(e.pointerId);
+      if (note === undefined) return;
+      touchNotes.delete(e.pointerId);
+      // Don't kill the highlight if the same key is also held on the
+      // hardware keyboard or under another finger.
+      if (![...touchNotes.values()].includes(note)) noteOff(note);
+    };
+    canvas.addEventListener('pointerup', releasePointer);
+    canvas.addEventListener('pointercancel', releasePointer);
   }
 
   function noteOn(midi, velocity = 90) {
@@ -481,6 +505,15 @@ export function mountTrainer(root) {
 
   function handleKeydown(e) {
     if (root.offsetParent === null) return;
+    // Don't hijack keys aimed at a form control. The remote-code modal sits
+    // outside the trainer view but leaves it visible, so typing a space in
+    // that field used to start playback behind the dialog; the same applies
+    // to Escape, which should close a control rather than stop the song.
+    const t = e.target;
+    if (t instanceof HTMLElement &&
+        (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|OPTION)$/.test(t.tagName))) {
+      return;
+    }
     if (e.code === 'Space') { e.preventDefault(); playback.isPlaying() ? playback.pause() : playback.play(); }
     else if (e.code === 'Escape') playback.stop();
   }
@@ -506,15 +539,16 @@ export function mountTrainer(root) {
     });
   }
 
-  async function loadSongById(id) {
+  async function loadSongById(id, name) {
     const record = await getSong(id).catch(() => null);
     if (!record) return;
     try {
       const song = parseMIDI(record.bytes);
-      song.name = currentSongMeta?.name || 'Song';
-      // Fetch latest name from list if needed — caller usually sets it.
-      currentSongMeta = { id, name: song.name, source: 'library', duration: song.duration, notes: song.notes.length };
-      onSongLoaded(song);
+      // Prefer an explicit name, then the one the API reported. Falling back
+      // to currentSongMeta.name (as this used to) labelled every remotely
+      // loaded song with the *previous* song's title.
+      song.name = name || record.name || 'Song';
+      onSongLoaded(song, { id, source: 'library' });
     } catch (err) {
       console.warn('Failed to load song by id:', err);
     }
@@ -544,7 +578,7 @@ export function mountTrainer(root) {
         break;
       }
       case 'setMidiOut':  setMidiOutEnabled(!!cmd.args?.[0]); break;
-      case 'loadSongById': loadSongById(cmd.args?.[0]); break;
+      case 'loadSongById': loadSongById(cmd.args?.[0], cmd.args?.[1]); break;
       case 'touchNoteOn': {
         const midi = cmd.args?.[0];
         const velocity = cmd.args?.[1] ?? 90;

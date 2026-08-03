@@ -176,10 +176,15 @@ export function mountController(root) {
       patches.forEach((patch, i) => {
         const btn = document.createElement('button');
         btn.className = 'patch-item';
-        btn.innerHTML = `
-          <span class="patch-num">${String(i + 1).padStart(3, '0')}</span>
-          <span class="patch-name">${patch.name}</span>
-        `;
+        // Patch names come from profile JSON, which the project intends to
+        // accept from community contributors — keep it out of innerHTML.
+        const num = document.createElement('span');
+        num.className = 'patch-num';
+        num.textContent = String(i + 1).padStart(3, '0');
+        const name = document.createElement('span');
+        name.className = 'patch-name';
+        name.textContent = patch.name;
+        btn.append(num, name);
         btn.addEventListener('click', () => {
           controller.setPatch(i);
           btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });

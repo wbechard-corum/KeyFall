@@ -3,6 +3,13 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
   // as one chord and must all be played before time advances.
   const CHORD_EPS = 0.03;
   const WAIT_WINDOW = 0.05;
+  // Largest clock step we'll honour in a single frame. Backgrounding the
+  // tab stops requestAnimationFrame; without this the first frame back
+  // carries the whole gap and the playhead teleports seconds ahead.
+  const MAX_FRAME_DT = 0.1;
+  // How far behind the playhead the wait/keypress scans still look. Must
+  // exceed every lookback below so the scan cursor never skips a live note.
+  const SCAN_BACK = 0.3;
 
   const state = {
     song: null,
@@ -15,7 +22,38 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     trackMuted: [false, false],
     lastFrameTime: 0,
     animFrameId: null,
+    // Cursors into song.notes (sorted by startTime). They turn what used to
+    // be a full-array walk on every frame into an amortised O(1) step.
+    emitIndex: 0,                 // next note not yet handed to audio
+    scanIndex: 0,                 // first note still near enough to matter
   };
+
+  // Index of the first note with startTime >= t.
+  function lowerBound(notes, t) {
+    let lo = 0, hi = notes.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (notes[mid].startTime < t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  function resetCursors() {
+    const notes = state.song?.notes;
+    if (!notes) { state.emitIndex = 0; state.scanIndex = 0; return; }
+    state.emitIndex = lowerBound(notes, state.currentTime);
+    state.scanIndex = lowerBound(notes, state.currentTime - SCAN_BACK);
+  }
+
+  function advanceScanCursor() {
+    const notes = state.song?.notes;
+    if (!notes) return;
+    const cutoff = state.currentTime - SCAN_BACK;
+    while (state.scanIndex < notes.length && notes[state.scanIndex].startTime < cutoff) {
+      state.scanIndex++;
+    }
+  }
 
   function clearWait() {
     state.waitingForNote = null;
@@ -28,6 +66,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     state.currentTime = 0;
     clearWait();
     if (song) song.notes.forEach(n => { n.played = false; n.hit = false; });
+    resetCursors();
   }
 
   function setSpeed(v) { state.playSpeed = Number(v) || 1; }
@@ -67,6 +106,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     state.currentTime = 0;
     if (state.song) state.song.notes.forEach(n => { n.played = false; n.hit = false; });
     clearWait();
+    resetCursors();
     onTick?.({ currentTime: 0, song: state.song });
   }
 
@@ -75,6 +115,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     state.currentTime = Math.max(0, Math.min(state.song.duration, seconds));
     state.song.notes.forEach(n => { n.played = false; n.hit = false; });
     clearWait();
+    resetCursors();
     onTick?.({ currentTime: state.currentTime, song: state.song });
   }
 
@@ -85,8 +126,9 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
 
   function tick() {
     if (!state.isPlaying) return;
+    if (!state.song) { pause(); return; }
     const now = performance.now();
-    const dt = (now - state.lastFrameTime) / 1000;
+    const dt = Math.min(MAX_FRAME_DT, (now - state.lastFrameTime) / 1000);
     state.lastFrameTime = now;
 
     if (state.waitMode && hasUnhitChord()) {
@@ -98,6 +140,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     state.currentTime += dt * state.playSpeed;
 
     emitDueNotes();
+    advanceScanCursor();
 
     if (state.waitMode) checkWait();
 
@@ -116,15 +159,18 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
   }
 
   function emitDueNotes() {
-    if (!state.song) return;
-    const lookback = 0.05;
-    for (const note of state.song.notes) {
+    const notes = state.song?.notes;
+    if (!notes) return;
+    // Walk the cursor forward over everything the playhead has passed.
+    // The old version only emitted notes inside a fixed 50ms window, so a
+    // single long frame (GC pause, tab throttling, a heavy sheet re-render)
+    // stepped straight over notes and they never sounded at all.
+    while (state.emitIndex < notes.length && notes[state.emitIndex].startTime <= state.currentTime) {
+      const note = notes[state.emitIndex++];
       if (note.played) continue;
-      if (note.startTime <= state.currentTime && note.startTime >= state.currentTime - lookback) {
-        note.played = true;
-        if (!state.trackMuted[note.track || 0]) {
-          notePlayListeners.forEach(fn => fn(note));
-        }
+      note.played = true;
+      if (!state.trackMuted[note.track || 0]) {
+        notePlayListeners.forEach(fn => fn(note));
       }
     }
   }
@@ -133,12 +179,14 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     // Notes are sorted by startTime; collect the contiguous run
     // whose startTime is within CHORD_EPS of seedNote.startTime
     // and that the user is supposed to play.
+    const notes = state.song.notes;
     const chord = [];
-    for (const note of state.song.notes) {
+    for (let i = state.scanIndex; i < notes.length; i++) {
+      const note = notes[i];
+      if (note.startTime > seedNote.startTime + CHORD_EPS) break;
       if (note.hit) continue;
       if (state.trackMuted[note.track || 0]) continue;
       if (note.startTime < seedNote.startTime - CHORD_EPS) continue;
-      if (note.startTime > seedNote.startTime + CHORD_EPS) break;
       chord.push(note);
     }
     return chord;
@@ -148,11 +196,13 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     if (!state.song) return;
     if (hasUnhitChord()) return;  // already waiting on a chord
     // Find the next unhit note that's reached the wait window.
+    const notes = state.song.notes;
     let seed = null;
-    for (const note of state.song.notes) {
+    for (let i = state.scanIndex; i < notes.length; i++) {
+      const note = notes[i];
+      if (note.startTime > state.currentTime + WAIT_WINDOW) break;
       if (note.hit || state.trackMuted[note.track || 0]) continue;
       if (note.startTime < state.currentTime - WAIT_WINDOW) continue;
-      if (note.startTime > state.currentTime + WAIT_WINDOW) break;
       seed = note;
       break;
     }
@@ -202,11 +252,13 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     // advance immediately (single-note chord) or set waiting state.
     const lookBack = 0.1;
     const lookAhead = 0.25;
+    const notes = state.song.notes;
     let matchNote = null;
-    for (const note of state.song.notes) {
+    for (let i = state.scanIndex; i < notes.length; i++) {
+      const note = notes[i];
+      if (note.startTime > state.currentTime + lookAhead) break;
       if (note.hit || state.trackMuted[note.track || 0]) continue;
       if (note.startTime < state.currentTime - lookBack) continue;
-      if (note.startTime > state.currentTime + lookAhead) break;
       if (note.midi === midiNote) { matchNote = note; break; }
     }
     if (!matchNote) return;

@@ -114,9 +114,29 @@ export function mountSongs(root, { onLoadSong } = {}) {
     }
   }
 
+  // Songs starting with a digit or symbol all bucket under '#', matching the
+  // jump index. Previously each got its own header ('1', '(', …) with no
+  // corresponding jump button, so they were unreachable from the A–Z rail.
+  function sectionLetter(name) {
+    const first = (name || '').trim()[0];
+    if (!first) return '#';
+    const upper = first.toUpperCase();
+    return upper >= 'A' && upper <= 'Z' ? upper : '#';
+  }
+
   function visibleRows() {
     const rows = activeTab === 'starred' ? allRows.filter(r => r.starred) : allRows;
-    return [...rows].sort((a, b) => a.name.localeCompare(b.name));
+    // Sort by bucket first so the '#' group is contiguous and lands last,
+    // then alphabetically within each bucket.
+    return [...rows].sort((a, b) => {
+      const la = sectionLetter(a.name), lb = sectionLetter(b.name);
+      if (la !== lb) {
+        if (la === '#') return 1;
+        if (lb === '#') return -1;
+        return la < lb ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
   }
 
   function renderList() {
@@ -139,7 +159,7 @@ export function mountSongs(root, { onLoadSong } = {}) {
     let lastLetter = null;
     const letterAnchors = {};
     for (const row of rows) {
-      const letter = (row.name[0] || '#').toUpperCase();
+      const letter = sectionLetter(row.name);
       if (letter !== lastLetter) {
         const header = document.createElement('div');
         header.className = 'songs-section';

@@ -22,6 +22,12 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
 
+  // Never touch the songs API or the mirror socket. Caching these meant the
+  // library list, uploaded .mid blobs and MusicXML conversions all piled up
+  // in the cache, and a stale list could be served after the network came
+  // back — including "pending" notation that had long since finished.
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/mirror/')) return;
+
   // Hashed build artifacts: cache-first (immutable URLs).
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(

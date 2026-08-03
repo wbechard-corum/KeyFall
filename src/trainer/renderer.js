@@ -19,6 +19,37 @@ function ensureRoundRect(ctx) {
   };
 }
 
+// Index of the first note with startTime >= t (notes are sorted by startTime).
+function lowerBound(notes, t) {
+  let lo = 0, hi = notes.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (notes[mid].startTime < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+// Longest note in the song, cached on the song object. Tells us how far
+// back a binary search has to reach before it can be sure it has seen
+// every note that might still be sounding at a given instant.
+function maxNoteDuration(song) {
+  if (song.__maxNoteDuration === undefined) {
+    let max = 0;
+    for (const n of song.notes) {
+      const d = n.endTime - n.startTime;
+      if (d > max) max = d;
+    }
+    song.__maxNoteDuration = max;
+  }
+  return song.__maxNoteDuration;
+}
+
+// Index of the first note that could still overlap time `t`.
+function firstLiveIndex(song, t) {
+  return lowerBound(song.notes, t - maxNoteDuration(song));
+}
+
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   ensureRoundRect(ctx);
@@ -102,13 +133,18 @@ export function createRenderer(canvas) {
   }
 
   function drawNotes(song, currentTime, trackMuted, isPlaying) {
-    if (!song) return;
+    if (!song || song.notes.length === 0) return;
     const pixelsPerSecond = state.noteAreaHeight / state.fallTimeSeconds;
     const viewStart = currentTime - 0.1;
     const viewEnd = currentTime + state.fallTimeSeconds + 0.5;
 
-    for (const note of song.notes) {
-      if (note.endTime < viewStart || note.startTime > viewEnd) continue;
+    // Seek to the first note that could still be on screen and stop at the
+    // first one past the top edge, instead of walking the whole song.
+    const notes = song.notes;
+    for (let i = firstLiveIndex(song, viewStart); i < notes.length; i++) {
+      const note = notes[i];
+      if (note.startTime > viewEnd) break;
+      if (note.endTime < viewStart) continue;
       const trackIdx = note.track || 0;
       if (trackMuted[trackIdx]) continue;
 
@@ -187,27 +223,25 @@ export function createRenderer(canvas) {
     }
   }
 
-  function isNoteActive(song, midiNote, currentTime, trackMuted) {
-    if (!song) return false;
-    for (const note of song.notes) {
-      if (note.midi === midiNote && currentTime >= note.startTime && currentTime <= note.endTime) {
-        if (!trackMuted[note.track || 0]) return true;
-      }
+  // midi note → track index, for every note sounding at `currentTime`.
+  // Built once per frame. Previously drawPiano called two whole-song scans
+  // per key, so a 5,000-note song did 1.7M comparisons every frame just to
+  // decide which keys to light up.
+  function computeActiveNotes(song, currentTime, trackMuted) {
+    const active = new Map();
+    if (!song || song.notes.length === 0) return active;
+    const notes = song.notes;
+    for (let i = firstLiveIndex(song, currentTime); i < notes.length; i++) {
+      const note = notes[i];
+      if (note.startTime > currentTime) break;
+      if (note.endTime < currentTime) continue;
+      if (trackMuted[note.track || 0]) continue;
+      if (!active.has(note.midi)) active.set(note.midi, note.track || 0);
     }
-    return false;
+    return active;
   }
 
-  function activeNoteTrack(song, midiNote, currentTime) {
-    if (!song) return 0;
-    for (const note of song.notes) {
-      if (note.midi === midiNote && currentTime >= note.startTime && currentTime <= note.endTime) {
-        return note.track || 0;
-      }
-    }
-    return 0;
-  }
-
-  function drawPiano(song, currentTime, pressedKeys, trackMuted, keyVelocity) {
+  function drawPiano(song, currentTime, pressedKeys, trackMuted, keyVelocity, activeNotes) {
     const y = state.H - state.pianoHeight;
     ctx.fillStyle = '#0a0c0f';
     ctx.fillRect(0, y, state.W, state.pianoHeight);
@@ -225,7 +259,7 @@ export function createRenderer(canvas) {
 
     for (const key of state.layout.whiteKeyPositions) {
       const pressed = pressedKeys.has(key.note);
-      const active = isNoteActive(song, key.note, currentTime, trackMuted);
+      const active = activeNotes.has(key.note);
       const isC = (key.note % 12) === 0;
       const baseFill = isC && cKey ? cKey : whiteBase;
       ctx.fillStyle = pressed || active ? COLORS.whiteKeyPressed : baseFill;
@@ -237,8 +271,7 @@ export function createRenderer(canvas) {
       }
 
       if (active) {
-        const track = activeNoteTrack(song, key.note, currentTime);
-        ctx.fillStyle = track === 0 ? rightC : leftC;
+        ctx.fillStyle = activeNotes.get(key.note) === 0 ? rightC : leftC;
         ctx.globalAlpha = 0.3;
         ctx.fillRect(key.x + 0.5, y + 1, key.w - 1, state.pianoHeight - 2);
         ctx.globalAlpha = 1;
@@ -277,7 +310,7 @@ export function createRenderer(canvas) {
     const bkH = state.pianoHeight * 0.62;
     for (const key of state.layout.blackKeyPositions) {
       const pressed = pressedKeys.has(key.note);
-      const active = isNoteActive(song, key.note, currentTime, trackMuted);
+      const active = activeNotes.has(key.note);
       ctx.fillStyle = pressed || active ? COLORS.blackKeyPressed : blackBase;
       ctx.fillRect(key.x, y, key.w, bkH);
 
@@ -291,8 +324,7 @@ export function createRenderer(canvas) {
       }
 
       if (active) {
-        const track = activeNoteTrack(song, key.note, currentTime);
-        ctx.fillStyle = track === 0 ? rightC : leftC;
+        ctx.fillStyle = activeNotes.get(key.note) === 0 ? rightC : leftC;
         ctx.globalAlpha = 0.4;
         ctx.fillRect(key.x, y, key.w, bkH);
         ctx.globalAlpha = 1;
@@ -316,12 +348,14 @@ export function createRenderer(canvas) {
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, state.W, state.H);
 
+    const activeNotes = computeActiveNotes(song, currentTime, trackMuted);
+
     if (song) {
       drawGrid();
       drawNotes(song, currentTime, trackMuted, isPlaying);
       drawHitLine();
     }
-    drawPiano(song, currentTime, pressedKeys, trackMuted, keyVelocity);
+    drawPiano(song, currentTime, pressedKeys, trackMuted, keyVelocity, activeNotes);
   }
 
   return {

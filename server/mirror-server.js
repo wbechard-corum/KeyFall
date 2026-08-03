@@ -2,7 +2,7 @@ import { WebSocketServer } from 'ws';
 import { createServer } from 'node:http';
 import { promises as fs } from 'node:fs';
 import { createReadStream } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomInt } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
@@ -43,30 +43,64 @@ async function ensureStorage() {
 }
 
 async function readIndex() {
-  const raw = await fs.readFile(INDEX_FILE, 'utf8');
-  try { return JSON.parse(raw); } catch { return []; }
+  let raw;
+  try { raw = await fs.readFile(INDEX_FILE, 'utf8'); }
+  catch { return []; }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
 }
 
-// All writes go through writeIndex which is serialised by a Promise
-// chain. The previous tmp+rename pattern raced when multiple async
-// markStatus calls overlapped and one would unlink the tmp before
-// another's rename. With the chain below only one writeIndex is
-// in flight at any time, so the rename always sees its own tmp.
-let writeChain = Promise.resolve();
-function writeIndex(rows) {
-  writeChain = writeChain.then(async () => {
-    const tmp = INDEX_FILE + '.tmp';
-    const json = JSON.stringify(rows, null, 2);
-    await fs.writeFile(tmp, json);
-    await fs.rename(tmp, INDEX_FILE);
-    // Maintain a backup so the next boot has something to recover
-    // from if the live file is corrupted again.
-    try { await fs.writeFile(INDEX_BACKUP, json); }
-    catch (e) { console.warn('index backup write failed:', e.message); }
-  }).catch(err => {
-    console.warn('writeIndex failed:', err.message);
+async function persistIndex(rows) {
+  const tmp = INDEX_FILE + '.tmp';
+  const json = JSON.stringify(rows, null, 2);
+  await fs.writeFile(tmp, json);
+  await fs.rename(tmp, INDEX_FILE);
+  // Maintain a backup so the next boot has something to recover
+  // from if the live file is corrupted again.
+  try { await fs.writeFile(INDEX_BACKUP, json); }
+  catch (e) { console.warn('index backup write failed:', e.message); }
+}
+
+// Every index change runs read → mutate → write as one serialised unit.
+//
+// Serialising only the *write* (as this used to) still left the read-modify-
+// write open: two uploads landing together both read the same array, each
+// appended its own record, and whichever wrote last clobbered the other's
+// entry. The .mid file stayed on disk but vanished from the library — which
+// is exactly what recoverOrphanSongs() below was papering over.
+let indexChain = Promise.resolve();
+function mutateIndex(mutator) {
+  const run = indexChain.then(async () => {
+    const rows = await readIndex();
+    const result = await mutator(rows);
+    await persistIndex(rows);
+    return result;
   });
-  return writeChain;
+  // Keep the chain healthy even if this particular mutation throws.
+  indexChain = run.then(() => {}, () => {});
+  return run;
+}
+
+// Song names reach us from a query string and from PATCH bodies, and end up
+// in a Content-Disposition header. Strip control characters (a bare CR/LF
+// would either inject a header or make Node throw ERR_INVALID_CHAR and 500
+// the download) and collapse whitespace.
+function cleanName(raw) {
+  const s = String(raw ?? '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+  return s || 'Untitled';
+}
+
+// Content-Disposition filename: ASCII-only, no quotes or path separators.
+function dispositionFilename(name) {
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\/]/g, '_');
+  return ascii.trim() || 'song';
 }
 
 async function listSongs() {
@@ -78,7 +112,6 @@ async function createSong(name, bytes) {
   const id = randomUUID();
   const filename = `${id}.mid`;
   await fs.writeFile(path.join(SONGS_DIR, filename), Buffer.from(bytes));
-  const rows = await readIndex();
   const record = {
     id, name, filename,
     size: bytes.byteLength ?? bytes.length,
@@ -86,8 +119,7 @@ async function createSong(name, bytes) {
     starred: false,
     notationStatus: 'pending',
   };
-  rows.push(record);
-  await writeIndex(rows);
+  await mutateIndex(rows => { rows.push(record); });
   // Kick off conversion in the background — uploads stay snappy and
   // the song is playable immediately; the staff just lights up once
   // the .musicxml lands.
@@ -153,12 +185,12 @@ async function runConversion(id) {
 }
 
 async function markStatus(id, status, extra = {}) {
-  const rows = await readIndex();
-  const row = rows.find(r => r.id === id);
-  if (!row) return;
-  row.notationStatus = status;
-  for (const k of Object.keys(extra)) row[k] = extra[k];
-  await writeIndex(rows);
+  await mutateIndex(rows => {
+    const row = rows.find(r => r.id === id);
+    if (!row) return;
+    row.notationStatus = status;
+    for (const k of Object.keys(extra)) row[k] = extra[k];
+  });
 }
 
 async function backfillNotation() {
@@ -189,35 +221,45 @@ async function backfillNotation() {
 // never in any index — usually only happens if someone scp'd a MIDI
 // straight into /data/songs).
 async function recoverOrphanSongs() {
-  const rows = await readIndex();
-  const known = new Set(rows.map(r => r.id));
   let entries;
   try { entries = await fs.readdir(SONGS_DIR); }
   catch { return 0; }
-  let recovered = 0;
+
+  // Stat everything up front so the mutation below stays synchronous and
+  // can't interleave with a concurrent upload.
+  const candidates = [];
   const now = Date.now();
   for (const name of entries) {
     const m = name.match(/^([a-f0-9-]{36})\.mid$/i);
     if (!m) continue;
-    const id = m[1];
-    if (known.has(id)) continue;
     const full = path.join(SONGS_DIR, name);
     let stat;
     try { stat = await fs.stat(full); } catch { continue; }
-    rows.push({
-      id,
-      name: `Recovered ${id.slice(0, 8)}`,
-      filename: name,
-      size: stat.size,
-      addedAt: stat.mtimeMs || now,
-      starred: false,
-      notationStatus: 'pending',
-    });
-    recovered += 1;
+    candidates.push({ id: m[1], filename: name, size: stat.size, addedAt: stat.mtimeMs || now });
   }
+  if (candidates.length === 0) return 0;
+
+  const recovered = await mutateIndex(rows => {
+    const known = new Set(rows.map(r => r.id));
+    let count = 0;
+    for (const c of candidates) {
+      if (known.has(c.id)) continue;
+      rows.push({
+        id: c.id,
+        name: `Recovered ${c.id.slice(0, 8)}`,
+        filename: c.filename,
+        size: c.size,
+        addedAt: c.addedAt,
+        starred: false,
+        notationStatus: 'pending',
+      });
+      count += 1;
+    }
+    if (count > 0) rows.sort((a, b) => a.addedAt - b.addedAt);
+    return count;
+  });
+
   if (recovered > 0) {
-    rows.sort((a, b) => a.addedAt - b.addedAt);
-    await writeIndex(rows);
     console.log(`Recovered ${recovered} orphan song(s) from disk; added to index with placeholder names.`);
   }
   return recovered;
@@ -229,26 +271,31 @@ async function getSongRecord(id) {
 }
 
 async function patchSong(id, patch) {
-  const rows = await readIndex();
-  const row = rows.find(r => r.id === id);
-  if (!row) return null;
-  if (typeof patch.name === 'string') {
-    row.name = patch.name.slice(0, 200);
-  }
-  if (typeof patch.starred === 'boolean') {
-    row.starred = patch.starred;
-  }
-  await writeIndex(rows);
-  return row;
+  return mutateIndex(rows => {
+    const row = rows.find(r => r.id === id);
+    if (!row) return null;
+    if (typeof patch.name === 'string') {
+      row.name = cleanName(patch.name);
+    }
+    if (typeof patch.starred === 'boolean') {
+      row.starred = patch.starred;
+    }
+    return row;
+  });
 }
 
 async function deleteSongById(id) {
-  const rows = await readIndex();
-  const idx = rows.findIndex(r => r.id === id);
-  if (idx === -1) return false;
-  const [record] = rows.splice(idx, 1);
-  await writeIndex(rows);
-  try { await fs.unlink(path.join(SONGS_DIR, record.filename)); } catch { /* already gone */ }
+  const record = await mutateIndex(rows => {
+    const idx = rows.findIndex(r => r.id === id);
+    if (idx === -1) return null;
+    return rows.splice(idx, 1)[0];
+  });
+  if (!record) return false;
+  // Delete the generated .musicxml too — it used to be left behind, so
+  // every deleted song leaked its notation file onto the volume forever.
+  for (const p of [path.join(SONGS_DIR, record.filename), notationPath(id)]) {
+    try { await fs.unlink(p); } catch { /* already gone */ }
+  }
   return true;
 }
 
@@ -285,10 +332,13 @@ function readBody(req, limit) {
 
 const rooms = new Map();
 
+// A room code is the only thing standing between a stranger and full remote
+// control of someone's MIDI rig, so draw it from the CSPRNG rather than
+// Math.random(), whose state is recoverable from a couple of observed codes.
 function newCode() {
   let code;
   do {
-    code = String(Math.floor(100000 + Math.random() * 900000));
+    code = String(100000 + randomInt(900000));
   } while (rooms.has(code));
   return code;
 }
@@ -298,13 +348,42 @@ function touch(room) { room.lastActivity = Date.now(); }
 function sweepIdleRooms() {
   const now = Date.now();
   for (const [code, room] of rooms) {
-    if (!room.host && room.clients.size === 0 && now - room.lastActivity > ROOM_IDLE_MS) {
+    // A room with no host is dead weight regardless of who's still watching
+    // it — clients have already been told 'host-gone'. Reap it once the
+    // reconnect window has passed so the code can be reused.
+    if (!room.host && now - room.lastActivity > ROOM_IDLE_MS) {
+      for (const c of room.clients) { c.code = null; }
       rooms.delete(code);
     }
   }
 }
 
 setInterval(sweepIdleRooms, 60 * 1000).unref?.();
+
+// Failed-join throttle. A 6-digit code is only a million guesses, and the
+// reward for finding a live one is control of someone's keyboard, so cap how
+// fast a single address can probe.
+const JOIN_FAIL_LIMIT = Number(process.env.JOIN_FAIL_LIMIT || 20);
+const JOIN_FAIL_WINDOW_MS = Number(process.env.JOIN_FAIL_WINDOW_MS || 5 * 60 * 1000);
+const joinFailures = new Map();   // ip → [timestamp, …]
+
+function recentFailures(ip) {
+  const cutoff = Date.now() - JOIN_FAIL_WINDOW_MS;
+  const hits = (joinFailures.get(ip) || []).filter(t => t > cutoff);
+  if (hits.length > 0) joinFailures.set(ip, hits);
+  else joinFailures.delete(ip);
+  return hits;
+}
+
+function noteJoinFailure(ip) {
+  const hits = recentFailures(ip);
+  hits.push(Date.now());
+  joinFailures.set(ip, hits);
+}
+
+function joinThrottled(ip) {
+  return recentFailures(ip).length >= JOIN_FAIL_LIMIT;
+}
 
 function wsSend(ws, msg) {
   if (ws.readyState === 1) ws.send(JSON.stringify(msg));
@@ -340,9 +419,16 @@ const http = createServer(async (req, res) => {
     }
 
     if (pathname === '/api/songs' && req.method === 'POST') {
-      const name = (url.searchParams.get('name') || 'Untitled').slice(0, 200);
+      const name = cleanName(url.searchParams.get('name') || 'Untitled');
       const bytes = await readBody(req, MAX_UPLOAD_BYTES);
       if (bytes.length === 0) { sendJson(res, 400, { error: 'empty body' }); return; }
+      // Reject anything that isn't a Standard MIDI File up front, rather
+      // than storing it and letting both the parser and the converter fail
+      // on it later with confusing errors.
+      if (bytes.length < 14 || bytes.toString('latin1', 0, 4) !== 'MThd') {
+        sendJson(res, 415, { error: 'not a MIDI file (missing MThd header)' });
+        return;
+      }
       const record = await createSong(name, bytes);
       sendJson(res, 201, {
         id: record.id, name: record.name, size: record.size,
@@ -358,12 +444,22 @@ const http = createServer(async (req, res) => {
       if (req.method === 'GET') {
         const record = await getSongRecord(id);
         if (!record) { sendJson(res, 404, { error: 'not found' }); return; }
+        const file = path.join(SONGS_DIR, record.filename);
+        // Length from the file itself, not the index. A restored-from-backup
+        // index can disagree with what's on disk, and an over-long
+        // content-length leaves the client hanging on a truncated body.
+        const stat = await fs.stat(file).catch(() => null);
+        if (!stat) { sendJson(res, 404, { error: 'file missing' }); return; }
         res.writeHead(200, {
           'content-type': 'audio/midi',
-          'content-length': record.size,
-          'content-disposition': `attachment; filename="${record.name.replace(/"/g, '')}.mid"`,
+          'content-length': stat.size,
+          'content-disposition':
+            `attachment; filename="${dispositionFilename(record.name)}.mid"; ` +
+            `filename*=UTF-8''${encodeURIComponent(record.name)}.mid`,
         });
-        createReadStream(path.join(SONGS_DIR, record.filename)).pipe(res);
+        const stream = createReadStream(file);
+        stream.on('error', () => res.destroy());
+        stream.pipe(res);
         return;
       }
       if (req.method === 'DELETE') {
@@ -433,9 +529,15 @@ const http = createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server: http });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   ws.role = null;
   ws.code = null;
+  ws.isAlive = true;
+  ws.remoteIp = req?.headers?.['x-real-ip']
+    || req?.headers?.['x-forwarded-for']?.split(',')[0].trim()
+    || req?.socket?.remoteAddress
+    || 'unknown';
+  ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (raw) => {
     let msg;
@@ -444,6 +546,20 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'host') {
       if (ws.role) return;
+      // A host that reconnects (Wi-Fi blip, phone waking up) asks to keep its
+      // previous code. Handing out a fresh one stranded every already-paired
+      // iPad, which then retried the old code forever.
+      const wanted = String(msg.code || '').trim();
+      const existing = /^\d{6}$/.test(wanted) ? rooms.get(wanted) : null;
+      if (existing && !existing.host) {
+        existing.host = ws;
+        touch(existing);
+        ws.role = 'host';
+        ws.code = wanted;
+        wsSend(ws, { type: 'hosted', code: wanted, resumed: true });
+        for (const c of existing.clients) wsSend(c, { type: 'host-back' });
+        return;
+      }
       const code = newCode();
       const room = { host: ws, clients: new Set(), lastState: null, lastActivity: Date.now() };
       rooms.set(code, room);
@@ -455,10 +571,19 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'join') {
       if (ws.role) return;
+      if (joinThrottled(ws.remoteIp)) {
+        wsSend(ws, { type: 'join-error', reason: 'too-many-attempts' });
+        ws.close();
+        return;
+      }
       const code = String(msg.code || '').trim();
       const room = rooms.get(code);
       if (!room || !room.host) {
-        wsSend(ws, { type: 'join-error', reason: 'not-found' });
+        // Only count a *wrong* code against the throttle. A known room whose
+        // host is momentarily reconnecting isn't a guess, and clients retry
+        // it on a backoff — charging those would lock out a legitimate iPad.
+        if (!room) noteJoinFailure(ws.remoteIp);
+        wsSend(ws, { type: 'join-error', reason: room ? 'host-offline' : 'not-found' });
         ws.close();
         return;
       }
@@ -497,7 +622,9 @@ wss.on('connection', (ws) => {
     if (ws.role === 'host') {
       for (const c of room.clients) wsSend(c, { type: 'host-gone' });
       room.host = null;
-      rooms.delete(ws.code);
+      // Keep the room (and its code) around so a reconnecting host can
+      // reclaim it. sweepIdleRooms reaps it if the host never comes back.
+      touch(room);
     } else if (ws.role === 'client') {
       room.clients.delete(ws);
       if (room.host) wsSend(room.host, { type: 'peer-left' });
@@ -505,6 +632,18 @@ wss.on('connection', (ws) => {
     }
   });
 });
+
+// A phone that goes to sleep or drops off Wi-Fi often never sends a TCP FIN,
+// so without this the room keeps a dead host forever: clients see "connected"
+// and every command they send disappears.
+const HEARTBEAT_MS = 30 * 1000;
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) { ws.terminate(); continue; }
+    ws.isAlive = false;
+    try { ws.ping(); } catch { /* socket already going away */ }
+  }
+}, HEARTBEAT_MS).unref?.();
 
 // ───────── Boot ─────────
 
