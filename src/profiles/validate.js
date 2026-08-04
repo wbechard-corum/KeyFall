@@ -11,6 +11,18 @@
 
 const SYSEX_FORMATS = ['roland-dt1'];
 
+// Mirrors src/midi/sysex.js. Duplicated rather than imported so this module
+// stays dependency-free and usable from the CLI and CI without pulling in the
+// WebMIDI layer.
+function encodingName(size, explicit) {
+  if (explicit === 'byte' || explicit === 'nibble') return explicit;
+  return size > 1 ? 'nibble' : 'byte';
+}
+function maxValueForSize(size, explicit) {
+  const n = Math.max(1, Math.min(8, size | 0));
+  return encodingName(n, explicit) === 'nibble' ? Math.pow(16, n) - 1 : 127;
+}
+
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isInt = (v) => Number.isInteger(v);
 const inRange = (v, lo, hi) => isInt(v) && v >= lo && v <= hi;
@@ -230,8 +242,53 @@ export function validateProfile(profile, { source = 'profile' } = {}) {
                 || !cmd.address.every(b => inRange(b, 0, 127))) {
               err(`${at}.address`, 'address must be a non-empty array of 7-bit values 0-127');
             }
-            if (cmd.size !== undefined && !inRange(cmd.size, 1, 512)) {
-              err(`${at}.size`, `size must be an integer 1-512 (got ${JSON.stringify(cmd.size)})`);
+            if (cmd.size !== undefined && !inRange(cmd.size, 1, 8)) {
+              err(`${at}.size`, `size must be an integer 1-8 — the number of SysEx data ` +
+                `bytes the parameter occupies (got ${JSON.stringify(cmd.size)})`);
+            }
+            if (cmd.encoding !== undefined && !['nibble', 'byte'].includes(cmd.encoding)) {
+              err(`${at}.encoding`, `encoding must be "nibble" or "byte" (got ${JSON.stringify(cmd.encoding)})`);
+            }
+            if (cmd.label !== undefined && typeof cmd.label !== 'string') {
+              err(`${at}.label`, 'label must be a string');
+            }
+
+            // Editor metadata. All optional — without it the editor falls
+            // back to the full range the size allows.
+            const size = cmd.size ?? 1;
+            const ceiling = maxValueForSize(size, cmd.encoding);
+            for (const key of ['min', 'max', 'default']) {
+              if (cmd[key] === undefined) continue;
+              if (!isInt(cmd[key]) || cmd[key] < 0 || cmd[key] > ceiling) {
+                err(`${at}.${key}`, `${key} must be an integer 0-${ceiling} for a ` +
+                  `size-${size} ${encodingName(size, cmd.encoding)} parameter ` +
+                  `(got ${JSON.stringify(cmd[key])})`);
+              }
+            }
+            const lo = cmd.min ?? 0;
+            const hi = cmd.max ?? ceiling;
+            if (isInt(cmd.min) && isInt(cmd.max) && cmd.min >= cmd.max) {
+              err(at, `min (${cmd.min}) must be less than max (${cmd.max})`);
+            }
+            if (isInt(cmd.default) && (cmd.default < lo || cmd.default > hi)) {
+              err(`${at}.default`, `default ${cmd.default} is outside this parameter's range ${lo}-${hi}`);
+            }
+            if (cmd.values !== undefined) {
+              if (!isObject(cmd.values) && !Array.isArray(cmd.values)) {
+                err(`${at}.values`, 'values must be an array of labels or an object keyed by value');
+              } else {
+                const pairs = Array.isArray(cmd.values)
+                  ? cmd.values.map((label, i) => [i, label])
+                  : Object.entries(cmd.values).map(([k, label]) => [Number(k), label]);
+                for (const [num, label] of pairs) {
+                  if (!Number.isInteger(num) || num < 0 || num > ceiling) {
+                    err(`${at}.values`, `value key ${JSON.stringify(num)} is outside 0-${ceiling}`);
+                  }
+                  if (typeof label !== 'string' || label.trim() === '') {
+                    err(`${at}.values`, `value ${num} needs a non-empty label`);
+                  }
+                }
+              }
             }
           }
         }

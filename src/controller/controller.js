@@ -3,7 +3,10 @@ import {
   sendPatchChange,
   sendSysEx,
 } from '../midi/output.js';
-import { IDENTITY_REQUEST, buildSysEx, parseIdentityReply } from '../midi/sysex.js';
+import {
+  IDENTITY_REQUEST, buildSysEx, parseIdentityReply,
+  encodeRolandValue, maxValueFor, encodingForSize,
+} from '../midi/sysex.js';
 import { onSysEx } from '../midi/input.js';
 import { getSetting, updateSettings, onSettingsChange } from '../shared/settings.js';
 import { loadProfile, loadDefaultProfile, matchProfileFromIdentity } from './profile-loader.js';
@@ -17,6 +20,7 @@ export function createController() {
     channel: getSetting('midiChannel') ?? 0,
     effectValues: {},
     controlStates: {},
+    sysexValues: {},
     lastIdentity: null,
     lastMessage: 'READY',
   };
@@ -72,6 +76,13 @@ export function createController() {
     for (const ctl of state.profile.controls) {
       state.controlStates[ctl.id] = false;
     }
+    // Seed SysEx parameters from their declared defaults (or range floor).
+    // Nothing is transmitted — this is just what the editor shows until you
+    // move something.
+    state.sysexValues = {};
+    for (const [id, cmd] of Object.entries(state.profile.sysex?.commands || {})) {
+      state.sysexValues[id] = cmd.default ?? cmd.min ?? 0;
+    }
     state.bankIndex = 0;
     state.patchIndex = 0;
   }
@@ -88,6 +99,7 @@ export function createController() {
       channel: state.channel,
       effectValues: { ...state.effectValues },
       controlStates: { ...state.controlStates },
+      sysexValues: { ...state.sysexValues },
       lastMessage: state.lastMessage,
       lastIdentity: state.lastIdentity,
     };
@@ -159,18 +171,51 @@ export function createController() {
   }
 
   function sendSysExCommand(commandId, data = []) {
-    const sx = state.profile.sysex;
-    if (!sx || !sx.commands || !sx.commands[commandId]) return;
-    const cmd = sx.commands[commandId];
-    const bytes = buildSysEx(sx.parameterFormat, {
-      deviceId: sx.deviceId,
-      modelId: sx.modelId,
-      address: cmd.address,
-      data,
-    });
+    const bytes = buildSysExCommand(commandId, data);
+    if (!bytes) return null;
     sendSysEx(bytes);
     state.lastMessage = `SYSEX: ${commandId}`;
     emit();
+    return bytes;
+  }
+
+  // Build without sending, so the editor can show exactly what a change would
+  // put on the wire before you commit to it.
+  function buildSysExCommand(commandId, data = []) {
+    const sx = state.profile.sysex;
+    if (!sx || !sx.commands || !sx.commands[commandId]) return null;
+    const cmd = sx.commands[commandId];
+    try {
+      return buildSysEx(sx.parameterFormat, {
+        deviceId: sx.deviceId,
+        modelId: sx.modelId,
+        address: cmd.address,
+        data,
+      });
+    } catch (e) {
+      console.warn(`Cannot build SysEx for "${commandId}":`, e);
+      return null;
+    }
+  }
+
+  // Set a named parameter to a numeric value, encoded the way the profile's
+  // format requires (Roland nibbles for multi-byte parameters).
+  function setSysExParameter(commandId, value) {
+    const sx = state.profile.sysex;
+    const cmd = sx?.commands?.[commandId];
+    if (!cmd) return null;
+    const data = encodeRolandValue(value, cmd.size ?? 1, cmd.encoding);
+    state.sysexValues[commandId] = value;
+    const bytes = sendSysExCommand(commandId, data);
+    if (bytes) state.lastMessage = `SYSEX: ${commandId}=${value}`;
+    emit();
+    return bytes;
+  }
+
+  function previewSysExParameter(commandId, value) {
+    const cmd = state.profile.sysex?.commands?.[commandId];
+    if (!cmd) return null;
+    return buildSysExCommand(commandId, encodeRolandValue(value, cmd.size ?? 1, cmd.encoding));
   }
 
   function handleMirrorCommand(cmd) {
@@ -184,6 +229,7 @@ export function createController() {
       case 'setEffectValue': return setEffectValue(...args);
       case 'toggleControl':  return toggleControl(...args);
       case 'sendIdentityRequest': return sendIdentityRequest();
+      case 'setSysExParameter': return setSysExParameter(...args);
     }
   }
 
@@ -198,6 +244,8 @@ export function createController() {
     toggleControl,
     sendIdentityRequest,
     sendSysExCommand,
+    setSysExParameter,
+    previewSysExParameter,
     handleMirrorCommand,
   };
 }

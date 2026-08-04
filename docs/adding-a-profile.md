@@ -85,3 +85,52 @@ Without those overrides the 129th patch would resolve to Program Change 128,
 which doesn't exist — the validator rejects it rather than letting the app
 silently re-send patch 1. It also rejects two patches that resolve to the same
 address, since one of them could be selected but never actually reached.
+
+## SysEx parameters
+
+Parameters with no CC — Roland's MFX, chorus and reverb blocks, for instance —
+are reached through System Exclusive. Entries under `sysex.commands` become
+rows in the controller's **SYSEX** tab.
+
+```jsonc
+"sysex": {
+  "parameterFormat": "roland-dt1",
+  "deviceId": 16,
+  "modelId": [0, 0, 0, 21],
+  "commands": {
+    "reverbType": {
+      "address": [16, 0, 8, 0],   // required, 7-bit bytes
+      "size": 2,                  // SysEx data bytes the parameter occupies
+      "label": "Reverb Type",     // shown in the editor
+      "description": "…",
+      "min": 0, "max": 7,         // optional; defaults to the size's range
+      "default": 4,
+      "values": ["Room 1", "Room 2", "Hall 1", "Hall 2"]
+    }
+  }
+}
+```
+
+`values` turns the control into a named dropdown; it may be an array (index =
+value) or an object keyed by value (`{ "0": "Off", "64": "Half" }`). Without
+it you get a slider plus a numeric field.
+
+### How values are encoded
+
+Roland splits multi-byte values into 4-bit nibbles, most significant first,
+because no SysEx data byte may reach 0x80:
+
+| `size` | encoding | range | value `0x1234` becomes |
+|--------|----------|-------|------------------------|
+| 1 | plain 7-bit byte | 0–127 | — |
+| 2 | two nibbles | 0–255 | — |
+| 4 | four nibbles | 0–65535 | `01 02 03 04` |
+
+Override with `"encoding": "byte"` or `"encoding": "nibble"` if an instrument
+departs from that. The editor shows the exact bytes it will transmit under
+each control, which is the fastest way to check a parameter against a MIDI
+implementation chart.
+
+**Do not guess value tables.** A wrong number here sends real bytes to real
+hardware. Fill `values` in from the manufacturer's MIDI implementation, or
+leave it out and use the numeric control.

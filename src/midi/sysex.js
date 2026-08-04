@@ -40,6 +40,36 @@ export function buildRolandDT1(deviceId, modelId, address, data) {
   ];
 }
 
+// Roland splits multi-byte parameter values into 4-bit nibbles, most
+// significant first, because every SysEx data byte must stay under 0x80. A
+// `size: 4` parameter therefore carries 16 bits of range in four bytes:
+//
+//   value 0x1234, size 4  ->  [0x01, 0x02, 0x03, 0x04]
+//
+// Single-byte parameters are sent as a plain 7-bit value instead.
+export function encodingForSize(size, explicit) {
+  if (explicit === 'byte' || explicit === 'nibble') return explicit;
+  return size > 1 ? 'nibble' : 'byte';
+}
+
+export function maxValueFor(size, encoding) {
+  const n = Math.max(1, Math.min(8, size | 0));
+  return encodingForSize(n, encoding) === 'nibble' ? Math.pow(16, n) - 1 : 127;
+}
+
+export function encodeRolandValue(value, size, encoding) {
+  const n = Math.max(1, Math.min(8, size | 0));
+  const kind = encodingForSize(n, encoding);
+  const max = maxValueFor(n, kind);
+  const v = Math.max(0, Math.min(max, Math.round(Number(value) || 0)));
+  if (kind === 'byte') return [v & 0x7F];
+  const out = new Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    out[i] = (v >> ((n - 1 - i) * 4)) & 0x0F;
+  }
+  return out;
+}
+
 export function buildSysEx(format, { deviceId, modelId, address, data }) {
   switch (format) {
     case 'roland-dt1':

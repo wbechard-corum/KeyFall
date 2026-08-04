@@ -1,5 +1,6 @@
 import { createController } from './controller.js';
 import { mountEffects, mountControls } from './effects-ui.js';
+import { mountSysEx } from './sysex-ui.js';
 import { availableProfiles } from './profile-loader.js';
 import { onTx } from '../midi/output.js';
 import { onStateChange } from '../midi/connection.js';
@@ -34,6 +35,7 @@ const TEMPLATE = `
       <button class="tab-btn active" data-tab="patches">PATCHES</button>
       <button class="tab-btn" data-tab="effects">EFFECTS</button>
       <button class="tab-btn" data-tab="controls">CONTROLS</button>
+      <button class="tab-btn" data-tab="sysex">SYSEX</button>
     </div>
 
     <div class="patch-list" data-role="patch-list"></div>
@@ -44,6 +46,10 @@ const TEMPLATE = `
 
     <div class="controls-panel hidden" data-role="controls-panel">
       <div class="controls-list" data-role="controls-list"></div>
+    </div>
+
+    <div class="sysex-panel hidden" data-role="sysex-panel">
+      <div class="sysex-list" data-role="sysex-list"></div>
     </div>
 
     <div class="footer">
@@ -105,6 +111,7 @@ export function mountController(root) {
     $('[data-role="patch-list"]').classList.toggle('hidden', tab !== 'patches');
     $('[data-role="effects-panel"]').classList.toggle('hidden', tab !== 'effects');
     $('[data-role="controls-panel"]').classList.toggle('hidden', tab !== 'controls');
+    $('[data-role="sysex-panel"]').classList.toggle('hidden', tab !== 'sysex');
     render(controller.getSnapshot());
   }
 
@@ -147,6 +154,18 @@ export function mountController(root) {
     }
     if (activeTab === 'controls') {
       mountControls($('[data-role="controls-list"]'), profile, (id) => controller.toggleControl(id))(controlStates);
+    }
+    if (activeTab === 'sysex') {
+      const host = $('[data-role="sysex-list"]');
+      // Rebuild only when the profile changes; otherwise just push values,
+      // so a slider being dragged isn't torn out from under the pointer.
+      const update = host.dataset.profileId === profile.id && host._sysexUpdate
+        ? host._sysexUpdate
+        : mountSysEx(host, profile, {
+            onSet: (id, value) => controller.setSysExParameter(id, value),
+            onPreview: (id, value) => controller.previewSysExParameter(id, value),
+          });
+      update(snap.sysexValues || {});
     }
   }
 
