@@ -32,6 +32,16 @@ const TEMPLATE = `
       </div>
 
       <button class="ctrl-btn" data-action="wait">WAIT</button>
+
+      <div class="ctrl-group loop-group" data-role="loop-group">
+        <span class="ctrl-label">LOOP</span>
+        <button class="ctrl-btn loop-btn" data-action="loop-a" title="Set the loop start at the playhead">A</button>
+        <button class="ctrl-btn loop-btn" data-action="loop-b" title="Set the loop end at the playhead">B</button>
+        <button class="ctrl-btn loop-btn" data-action="loop-toggle" title="Turn the loop on or off">↻</button>
+        <button class="ctrl-btn loop-btn" data-action="loop-clear" title="Clear the loop">✕</button>
+        <span class="loop-info" data-role="loop-info"></span>
+      </div>
+
       <button class="ctrl-btn" data-action="midi-out" title="Send notes to connected MIDI keyboard">MIDI OUT</button>
 
       <div class="ctrl-group">
@@ -77,7 +87,10 @@ const TEMPLATE = `
     </div>
 
     <div class="progress-bar" data-action="seek">
+      <div class="loop-region hidden" data-role="loop-region"></div>
       <div class="progress-fill" data-role="progress-fill"></div>
+      <div class="loop-marker a hidden" data-role="loop-marker-a"></div>
+      <div class="loop-marker b hidden" data-role="loop-marker-b"></div>
     </div>
 
     <div class="canvas-wrap" data-role="canvas-wrap">
@@ -145,6 +158,7 @@ export function mountTrainer(root) {
     },
     onWaitChange: () => render(),
     onScoreChange: (score) => renderScore(score),
+    onLoopChange: () => renderLoop(),
   });
 
   playback.onNotePlay((note) => {
@@ -268,6 +282,48 @@ export function mountTrainer(root) {
     $('[data-role="score-summary"]').classList.add('hidden');
   }
 
+  function renderLoop() {
+    const loop = playback.loopState();
+    const song = playback.state.song;
+    const dur = song?.duration || 0;
+    const pct = (t) => (dur > 0 ? Math.max(0, Math.min(100, (t / dur) * 100)) : 0);
+
+    const region = $('[data-role="loop-region"]');
+    const markA = $('[data-role="loop-marker-a"]');
+    const markB = $('[data-role="loop-marker-b"]');
+
+    if (loop.start !== null) {
+      markA.style.left = pct(loop.start) + '%';
+      markA.classList.remove('hidden');
+    } else markA.classList.add('hidden');
+
+    if (loop.end !== null) {
+      markB.style.left = pct(loop.end) + '%';
+      markB.classList.remove('hidden');
+    } else markB.classList.add('hidden');
+
+    if (loop.start !== null && loop.end !== null) {
+      region.style.left = pct(loop.start) + '%';
+      region.style.width = Math.max(0, pct(loop.end) - pct(loop.start)) + '%';
+      region.classList.remove('hidden');
+      region.classList.toggle('off', !loop.enabled);
+    } else region.classList.add('hidden');
+
+    $('[data-action="loop-a"]').classList.toggle('active', loop.start !== null);
+    $('[data-action="loop-b"]').classList.toggle('active', loop.end !== null);
+    $('[data-action="loop-toggle"]').classList.toggle('active', loop.active);
+
+    const info = $('[data-role="loop-info"]');
+    if (loop.start !== null && loop.end !== null) {
+      const span = formatTime(loop.end - loop.start);
+      info.textContent = loop.count > 0 ? `${span} ×${loop.count}` : span;
+    } else if (loop.start !== null) {
+      info.textContent = 'set B';
+    } else {
+      info.textContent = '';
+    }
+  }
+
   function renderHandButtons() {
     for (const [idx, role] of [[0, 'hand-r-mode'], [1, 'hand-l-mode']]) {
       const mode = playback.getHandMode(idx);
@@ -309,6 +365,7 @@ export function mountTrainer(root) {
       duration: song.duration,
       notes: song.notes.length,
     };
+    playback.clearLoop();   // a loop from the previous song means nothing here
     if (viewMode === 'sheet') refreshSheet();
     render();
   }
@@ -513,6 +570,14 @@ export function mountTrainer(root) {
       });
     }
 
+    $('[data-action="loop-a"]').addEventListener('click',
+      () => playback.setLoopPoint('start', playback.getCurrentTime()));
+    $('[data-action="loop-b"]').addEventListener('click',
+      () => playback.setLoopPoint('end', playback.getCurrentTime()));
+    $('[data-action="loop-toggle"]').addEventListener('click',
+      () => playback.setLoopEnabled(!playback.loopState().enabled));
+    $('[data-action="loop-clear"]').addEventListener('click', () => playback.clearLoop());
+
     $('[data-action="summary-close"]').addEventListener('click', hideSummary);
     $('[data-action="summary-again"]').addEventListener('click', () => {
       hideSummary();
@@ -642,6 +707,7 @@ export function mountTrainer(root) {
       // Derived so the mirror client can keep showing which hands are hidden.
       trackMuted: playback.handStates().map(h => !h.visible),
       score: playback.getScore(),
+      loop: playback.loopState(),
       waitingForNote: playback.state.waitingForNote?.midi ?? null,
       waitingForChord: playback.state.waitingForChord
         ? playback.state.waitingForChord.filter(n => !n.hit).map(n => n.midi)
@@ -702,6 +768,14 @@ export function mountTrainer(root) {
         break;
       }
       case 'setMidiOut':  setMidiOutEnabled(!!cmd.args?.[0]); break;
+      case 'setLoopPoint': {
+        const which = cmd.args?.[0] === 'end' ? 'end' : 'start';
+        const at = cmd.args?.[1];
+        playback.setLoopPoint(which, typeof at === 'number' ? at : playback.getCurrentTime());
+        break;
+      }
+      case 'setLoopEnabled': playback.setLoopEnabled(!!cmd.args?.[0]); break;
+      case 'clearLoop':      playback.clearLoop(); break;
       case 'loadSongById': loadSongById(cmd.args?.[0], cmd.args?.[1]); break;
       case 'touchNoteOn': {
         const midi = cmd.args?.[0];
@@ -741,6 +815,7 @@ export function mountTrainer(root) {
   setupControls();
   renderHandButtons();
   renderScore();
+  renderLoop();
   setupDragDrop();
   setupTouchPiano();
   render();

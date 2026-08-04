@@ -569,6 +569,58 @@ select option {
   cursor: pointer;
 }
 
+/* Section repeat: shaded region between the A and B markers. The bar is only
+   3px tall, so the markers overhang it to stay grabbable and visible. */
+.loop-region {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(226, 192, 90, 0.35);
+  pointer-events: none;
+}
+.loop-region.off { background: rgba(255, 255, 255, 0.12); }
+
+.loop-marker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 9px;
+  margin-left: -1px;
+  background: #e2c05a;
+  pointer-events: none;
+}
+.loop-marker::after {
+  content: attr(data-label);
+  position: absolute;
+  top: -11px;
+  left: -3px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  color: #e2c05a;
+}
+.loop-marker.a::after { content: 'A'; }
+.loop-marker.b::after { content: 'B'; }
+
+.loop-group { gap: 2px; }
+.loop-btn {
+  min-width: 22px;
+  padding: 4px 5px;
+  font-size: 10px;
+  line-height: 1;
+}
+.loop-btn.active {
+  border-color: rgba(226, 192, 90, 0.6);
+  color: #e2c05a;
+  background: rgba(226, 192, 90, 0.14);
+}
+.loop-info {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--text-dim);
+  min-width: 34px;
+  padding-left: 2px;
+}
+
 .progress-fill {
   height: 100%;
   background: var(--accent);

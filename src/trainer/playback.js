@@ -1,7 +1,7 @@
 import { resolveHandMode, nextHandMode } from '../shared/constants.js';
 import { createScorer } from './scoring.js';
 
-export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChange, onScoreChange }) {
+export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChange, onScoreChange, onLoopChange }) {
   // Notes that start within CHORD_EPS seconds of each other count
   // as one chord and must all be played before time advances.
   const CHORD_EPS = 0.03;
@@ -24,6 +24,11 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     waitingForChord: null,        // [note, …] — every note that must be pressed
     // Per hand: 0 = right, 1 = left. See HAND_MODES in shared/constants.js.
     handModes: ['both', 'both'],
+    // Section repeat. Both ends must be set for the loop to engage.
+    loopStart: null,
+    loopEnd: null,
+    loopEnabled: false,
+    loopCount: 0,
     lastFrameTime: 0,
     animFrameId: null,
     // Cursors into song.notes (sorted by startTime). They turn what used to
@@ -97,6 +102,78 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     if (!state.waitMode) clearWait();
   }
 
+  // ── Section repeat ──────────────────────────────────────────────────────
+  // Practising four hard bars on repeat is the core piano workflow, so the
+  // loop is a first-class part of the clock rather than a UI-driven seek.
+
+  function hasLoop() {
+    return state.loopEnabled
+      && state.loopStart !== null && state.loopEnd !== null
+      && state.loopEnd > state.loopStart;
+  }
+
+  function setLoopPoint(which, seconds) {
+    if (!state.song) return;
+    const t = Math.max(0, Math.min(state.song.duration, Number(seconds) || 0));
+    if (which === 'start') state.loopStart = t;
+    else state.loopEnd = t;
+    // Keep the pair ordered however the user dropped them.
+    if (state.loopStart !== null && state.loopEnd !== null && state.loopEnd < state.loopStart) {
+      const swap = state.loopStart;
+      state.loopStart = state.loopEnd;
+      state.loopEnd = swap;
+    }
+    // Setting both ends arms the loop; the user shouldn't have to also
+    // remember to switch it on.
+    if (state.loopStart !== null && state.loopEnd !== null) state.loopEnabled = true;
+    onLoopChange?.(loopState());
+  }
+
+  function clearLoop() {
+    state.loopStart = null;
+    state.loopEnd = null;
+    state.loopEnabled = false;
+    state.loopCount = 0;
+    onLoopChange?.(loopState());
+  }
+
+  function setLoopEnabled(on) {
+    state.loopEnabled = !!on && state.loopStart !== null && state.loopEnd !== null;
+    onLoopChange?.(loopState());
+  }
+
+  function loopState() {
+    return {
+      start: state.loopStart,
+      end: state.loopEnd,
+      enabled: state.loopEnabled,
+      active: hasLoop(),
+      count: state.loopCount,
+    };
+  }
+
+  // Jump back to the loop start, clearing judgement for the section so each
+  // pass is scored fresh rather than inheriting the previous run's misses.
+  function wrapLoop() {
+    state.loopCount += 1;
+    state.currentTime = state.loopStart;
+    clearWait();
+    const notes = state.song?.notes;
+    if (notes) {
+      for (const n of notes) {
+        if (n.startTime >= state.loopStart - 0.001 && n.startTime <= state.loopEnd + 0.001) {
+          n.played = false;
+          n.judged = false;
+          n.hit = false;
+          n.rating = null;
+          n.timingError = 0;
+        }
+      }
+    }
+    resetCursors();
+    onLoopChange?.(loopState());
+  }
+
   function resetNoteState(song) {
     if (!song) return;
     song.notes.forEach(n => { n.played = false; });
@@ -123,6 +200,12 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
 
   function play() {
     if (!state.song || state.isPlaying) return;
+    // Starting playback with the playhead outside an armed loop should drop
+    // you into the section, not play the rest of the piece once.
+    if (hasLoop() && (state.currentTime < state.loopStart || state.currentTime >= state.loopEnd)) {
+      state.currentTime = state.loopStart;
+      resetCursors();
+    }
     state.isPlaying = true;
     state.lastFrameTime = performance.now();
     onPlayStateChange?.(true);
@@ -139,11 +222,14 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
 
   function stop() {
     pause();
-    state.currentTime = 0;
+    // Stopping inside a loop returns to the section's start, not to the top
+    // of the piece — otherwise STOP would silently drop you out of the loop.
+    state.currentTime = hasLoop() ? state.loopStart : 0;
+    state.loopCount = 0;
     resetNoteState(state.song);
     clearWait();
     resetCursors();
-    onTick?.({ currentTime: 0, song: state.song });
+    onTick?.({ currentTime: state.currentTime, song: state.song });
   }
 
   function seek(seconds) {
@@ -187,6 +273,15 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     }
 
     if (state.waitMode) checkWait();
+
+    // Wrap before the end-of-song check so a loop that ends at the very end
+    // of the piece repeats instead of finishing the run.
+    if (hasLoop() && state.currentTime >= state.loopEnd) {
+      wrapLoop();
+      onTick?.({ currentTime: state.currentTime, song: state.song, waitingFor: state.waitingForNote });
+      state.animFrameId = requestAnimationFrame(tick);
+      return;
+    }
 
     if (state.currentTime >= state.song.duration + 1) {
       stop();
@@ -348,6 +443,10 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     cycleHandMode,
     getHandMode,
     handStates,
+    setLoopPoint,
+    clearLoop,
+    setLoopEnabled,
+    loopState,
     play,
     pause,
     stop,
