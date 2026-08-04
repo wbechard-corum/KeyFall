@@ -18,6 +18,7 @@ import { saveSong } from './library.js';
 import { createSheet, retryNotation } from './sheet.js';
 import { createMetronome } from './metronome.js';
 import { ensureFingering } from './fingering.js';
+import { createRecorder, createTakePlayer, normaliseTake } from './recorder.js';
 
 const TEMPLATE = `
   <div class="trainer-root">
@@ -47,6 +48,13 @@ const TEMPLATE = `
         <button class="ctrl-btn loop-btn" data-action="loop-toggle" title="Turn the loop on or off">↻</button>
         <button class="ctrl-btn loop-btn" data-action="loop-clear" title="Clear the loop">✕</button>
         <span class="loop-info" data-role="loop-info"></span>
+      </div>
+
+      <div class="ctrl-group rec-group" data-role="rec-group">
+        <button class="ctrl-btn rec-btn" data-action="record" title="Record what you play, in song time">REC</button>
+        <button class="ctrl-btn" data-action="take-compare" title="Show your last take beside the score">TAKE</button>
+        <button class="ctrl-btn" data-action="take-play" title="Play your last take instead of the score">HEAR</button>
+        <span class="take-info" data-role="take-info"></span>
       </div>
 
       <button class="ctrl-btn" data-action="midi-out" title="Send notes to connected MIDI keyboard">MIDI OUT</button>
@@ -158,18 +166,33 @@ export function mountTrainer(root) {
 
   const metronome = createMetronome();
 
+  let showTake = false;      // draw the last take beside the score
+  let hearTake = false;      // play the take instead of the score
+
+  const recorder = createRecorder({ onStateChange: () => renderRecordState() });
+  const takePlayer = createTakePlayer((note) => {
+    const speed = playback.state.playSpeed || 1;
+    playNote(note.midi, (note.endTime - note.startTime) / speed, note.velocity || 90);
+  });
+
   const playback = createPlayback({
     onTick: () => {
       // Only the real playback tick schedules clicks; render() is also
       // called from idle repaints and key events, which must stay silent.
-      metronome.schedule(playback.state.song, playback.state.currentTime,
-                         playback.state.playSpeed);
+      const t = playback.state.currentTime;
+      metronome.schedule(playback.state.song, t, playback.state.playSpeed);
+      recorder.tick(t);
+      if (hearTake) takePlayer.tick(t);
       render();
     },
     onEnded: () => { setPlayButtonState(false); showSummary(); },
     onPlayStateChange: (playing) => {
       setPlayButtonState(playing);
-      if (!playing) { panicAllOutNotes(); audioAllNotesOff(); }
+      if (!playing) {
+        panicAllOutNotes();
+        audioAllNotesOff();
+        if (recorder.isRecording()) finishRecording();
+      }
     },
     onWaitChange: () => render(),
     onScoreChange: (score) => renderScore(score),
@@ -180,6 +203,7 @@ export function mountTrainer(root) {
   });
 
   playback.onNotePlay((note) => {
+    if (hearTake) return;   // auditioning the take, not the score
     const speed = playback.state.playSpeed || 1;
     playNote(note.midi, (note.endTime - note.startTime) / speed, note.velocity || 80);
     if (midiOutEnabled) sendNoteToKeyboard(note);
@@ -229,6 +253,7 @@ export function mountTrainer(root) {
       keyVelocity: pressedKeys,
       hands: playback.handStates(),
       isPlaying: playback.isPlaying(),
+      take: showTake ? recorder.getTake() : null,
     });
     if (viewMode === 'sheet') sheet?.moveCursor(playback.state.currentTime);
     updateProgress();
@@ -328,6 +353,91 @@ export function mountTrainer(root) {
     playback.play();
   }
 
+  // ── Recording ───────────────────────────────────────────────────────────
+
+  const TAKE_STORAGE_KEY = 'keyfall.lastTake';
+
+  function takeKeyFor(meta) {
+    return meta?.id || (meta?.demoId ? `demo:${meta.demoId}` : null);
+  }
+
+  function saveTake(take) {
+    const key = takeKeyFor(currentSongMeta);
+    if (!key || !take) return;
+    try {
+      localStorage.setItem(TAKE_STORAGE_KEY, JSON.stringify({ key, take }));
+    } catch { /* storage full or unavailable — the take just isn't kept */ }
+  }
+
+  function loadTakeForCurrentSong() {
+    const key = takeKeyFor(currentSongMeta);
+    recorder.clearTake();
+    if (!key) { renderRecordState(); return; }
+    try {
+      const raw = localStorage.getItem(TAKE_STORAGE_KEY);
+      if (!raw) { renderRecordState(); return; }
+      const stored = JSON.parse(raw);
+      if (stored?.key === key) recorder.setTake(normaliseTake(stored.take));
+    } catch { /* unreadable — start with no take */ }
+    renderRecordState();
+  }
+
+  function startRecording() {
+    if (!playback.state.song) return;
+    // A new take replaces the old one on screen; don't compare against a
+    // stale take while making a fresh one.
+    showTake = false;
+    hearTake = false;
+    recorder.start(playback.getCurrentTime());
+    renderRecordState();
+    if (!playback.isPlaying()) togglePlay();
+  }
+
+  function finishRecording() {
+    const take = recorder.stop({
+      songId: currentSongMeta?.id ?? null,
+      songName: currentSongMeta?.name ?? null,
+      score: playback.getScore(),
+    });
+    if (take) {
+      saveTake(take);
+      takePlayer.load(take);
+      showTake = true;    // you just recorded it; show it
+    }
+    renderRecordState();
+    render();
+  }
+
+  function renderRecordState() {
+    const st = recorder.status();
+    const recBtn = $('[data-action="record"]');
+    const cmpBtn = $('[data-action="take-compare"]');
+    const hearBtn = $('[data-action="take-play"]');
+    const info = $('[data-role="take-info"]');
+    if (!recBtn) return;
+
+    recBtn.classList.toggle('active', st.recording);
+    recBtn.textContent = st.recording ? 'REC ●' : 'REC';
+
+    cmpBtn.disabled = !st.hasTake;
+    hearBtn.disabled = !st.hasTake;
+    cmpBtn.classList.toggle('active', showTake && st.hasTake);
+    hearBtn.classList.toggle('active', hearTake && st.hasTake);
+
+    if (st.recording) {
+      info.textContent = `${st.noteCount} note${st.noteCount === 1 ? '' : 's'}`;
+    } else if (st.hasTake) {
+      const take = recorder.getTake();
+      const acc = take.score?.accuracy;
+      info.textContent = acc !== null && acc !== undefined
+        ? `${take.notes.length} · ${Math.round(acc * 100)}%`
+        : `${take.notes.length} notes`;
+      if (st.truncated) info.textContent += ' (capped)';
+    } else {
+      info.textContent = '';
+    }
+  }
+
   function renderLoop() {
     const loop = playback.loopState();
     const song = playback.state.song;
@@ -414,6 +524,10 @@ export function mountTrainer(root) {
       notes: song.notes.length,
     };
     playback.clearLoop();   // a loop from the previous song means nothing here
+    recorder.cancel();
+    showTake = false;
+    hearTake = false;
+    loadTakeForCurrentSong();
     if (viewMode === 'sheet') refreshSheet();
     render();
   }
@@ -645,6 +759,24 @@ export function mountTrainer(root) {
       });
     }
 
+    $('[data-action="record"]').addEventListener('click', () => {
+      if (recorder.isRecording()) finishRecording();
+      else startRecording();
+    });
+    $('[data-action="take-compare"]').addEventListener('click', () => {
+      showTake = !showTake && !!recorder.getTake();
+      renderRecordState();
+      render();
+    });
+    $('[data-action="take-play"]').addEventListener('click', () => {
+      hearTake = !hearTake && !!recorder.getTake();
+      if (hearTake) {
+        takePlayer.load(recorder.getTake());
+        takePlayer.reset(playback.getCurrentTime());
+      }
+      renderRecordState();
+    });
+
     $('[data-action="loop-a"]').addEventListener('click',
       () => playback.setLoopPoint('start', playback.getCurrentTime()));
     $('[data-action="loop-b"]').addEventListener('click',
@@ -666,6 +798,7 @@ export function mountTrainer(root) {
       const rect = e.currentTarget.getBoundingClientRect();
       const pct = (e.clientX - rect.left) / rect.width;
       playback.seekPct(pct);
+      takePlayer.reset(playback.getCurrentTime());
     });
   }
 
@@ -722,6 +855,7 @@ export function mountTrainer(root) {
   function noteOn(midi, velocity = 90) {
     pressedKeys.set(midi, velocity);
     audioNoteOn(midi, velocity);
+    recorder.noteOn(midi, velocity, playback.getCurrentTime());
     playback.reportKeyPress(midi);
     if (midiOutEnabled) {
       const channel = getSetting('midiChannel') ?? 0;
@@ -733,6 +867,7 @@ export function mountTrainer(root) {
   function noteOff(midi) {
     pressedKeys.delete(midi);
     audioNoteOff(midi);
+    recorder.noteOff(midi, playback.getCurrentTime());
     if (midiOutEnabled) {
       const channel = getSetting('midiChannel') ?? 0;
       sendNoteOff(channel, midi);
@@ -744,10 +879,12 @@ export function mountTrainer(root) {
     if (type === 'on') {
       pressedKeys.set(note, velocity || 100);
       audioNoteOn(note, velocity || 100);
+      recorder.noteOn(note, velocity || 100, playback.getCurrentTime());
       playback.reportKeyPress(note);
     } else {
       pressedKeys.delete(note);
       audioNoteOff(note);
+      recorder.noteOff(note, playback.getCurrentTime());
     }
     render();
   });
@@ -911,6 +1048,7 @@ export function mountTrainer(root) {
   renderHandButtons();
   renderScore();
   renderLoop();
+  renderRecordState();
   setupDragDrop();
   setupTouchPiano();
   render();

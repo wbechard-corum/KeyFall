@@ -86,6 +86,10 @@ export const COLORS = {
   gridLineBeat: 'rgba(255,255,255,0.07)',
   hitLine: 'rgba(255,255,255,0.15)',
   accent: '#4dd6c3',
+  // Recorded take overlay — deliberately neutral so it reads as 'yours'
+  // rather than competing with the hand colours.
+  takeOutline: 'rgba(255,255,255,0.75)',
+  takeFill: 'rgba(255,255,255,0.16)',
   accentBright: '#6ae3d0',
 };
 

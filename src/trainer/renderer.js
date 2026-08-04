@@ -185,6 +185,42 @@ export function createRenderer(canvas) {
     }
   }
 
+  // Draw a recorded take as hollow bars behind the score, in a lane offset to
+  // the side of each key. Overlapping them exactly on the score bars would
+  // make it impossible to see which is which; side by side, a note played
+  // late or held short is obvious at a glance.
+  function drawTake(take, currentTime) {
+    if (!take?.notes?.length) return;
+    const pixelsPerSecond = state.noteAreaHeight / state.fallTimeSeconds;
+    const viewStart = currentTime - 0.1;
+    const viewEnd = currentTime + state.fallTimeSeconds + 0.5;
+
+    ctx.save();
+    ctx.strokeStyle = COLORS.takeOutline;
+    ctx.fillStyle = COLORS.takeFill;
+    ctx.lineWidth = 1;
+
+    for (const note of take.notes) {
+      if (note.startTime > viewEnd) break;
+      if (note.endTime < viewStart) continue;
+      const x = getNoteX(state.layout, note.midi);
+      if (x === null) continue;
+      const w = Math.max(4, getNoteWidth(state.layout, note.midi) * 0.42);
+
+      const yBottom = state.noteAreaHeight - (note.startTime - currentTime) * pixelsPerSecond;
+      const yTop = state.noteAreaHeight - (note.endTime - currentTime) * pixelsPerSecond;
+      const h = Math.max(3, yBottom - yTop);
+      // Sit in the right-hand half of the key's slot.
+      const nx = x + getNoteWidth(state.layout, note.midi) * 0.1;
+
+      ctx.beginPath();
+      ctx.roundRect(nx, yTop, w, h, Math.min(3, w / 3, h / 3));
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawHitLine() {
     const y = state.noteAreaHeight;
     ctx.strokeStyle = COLORS.hitLine;
@@ -437,7 +473,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function render({ song, currentTime, pressedKeys, hands, isPlaying, keyVelocity }) {
+  function render({ song, currentTime, pressedKeys, hands, isPlaying, keyVelocity, take }) {
     const handState = normaliseHands(hands);
     ctx.clearRect(0, 0, state.W, state.H);
     ctx.fillStyle = COLORS.bg;
@@ -448,6 +484,7 @@ export function createRenderer(canvas) {
     if (song) {
       drawGrid();
       drawNotes(song, currentTime, handState, isPlaying);
+      if (take) drawTake(take, currentTime);
       drawHitLine();
     }
     drawPiano(song, currentTime, pressedKeys, keyVelocity, activeNotes);
