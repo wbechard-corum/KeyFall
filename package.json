@@ -1,6 +1,6 @@
 {
   "name": "keyfall",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Open-source piano trainer and universal MIDI keyboard controller.",
   "type": "module",
   "scripts": {
@@ -11,7 +11,9 @@
     "dev:server": "DATA_DIR=./.data node server/mirror-server.js",
     "dev:all": "node scripts/dev-all.mjs",
     "test:setup": "npm i --no-save playwright && npm --prefix server install",
-    "validate:profiles": "node scripts/validate-profiles.mjs"
+    "validate:profiles": "node scripts/validate-profiles.mjs",
+    "docs": "node scripts/build-docs.mjs",
+    "docs:serve": "node scripts/build-docs.mjs && npx --yes serve docs-site"
   },
   "license": "MIT",
   "dependencies": {
@@ -20,6 +22,7 @@
     "opensheetmusicdisplay": "^1.8.7"
   },
   "devDependencies": {
+    "marked": "^18.0.7",
     "vite": "^5.4.0"
   }
 }

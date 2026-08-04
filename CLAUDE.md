@@ -12,7 +12,7 @@ Both modes share a single WebMIDI connection layer. Connect your keyboard once, 
 
 The goal is to fill the gap left by web-based projects that went closed-source (Midiano, Sightread), and to provide something no existing tool does: a browser-based controller that works with specific hardware instruments, not just generic GM.
 
-## Current State (v0.8)
+## Current State (v0.9)
 
 A single Vite app with a shared WebMIDI layer and a mode switcher (LIVE /
 SONGS / PATCHES / SETTINGS), plus a Node backend for the song library and the
@@ -58,6 +58,10 @@ Run `npm run dev:all` to start the front end and the backend together;
   piano is chosen, and notes fall back to the synth until it lands.
 - **Labels**: Falling notes carry note names or solfège (fixed or movable do),
   plus optional automatic fingering numbers.
+- **Recording**: Takes captured in song time, replayed through the instrument
+  and drawn beside the score. Last take per song is kept.
+- **Touch**: Pinch to zoom the keyboard, drag to pan, swipe the nav between
+  tabs, drag the progress bar to scrub.
 - **Sheet music**: OpenSheetMusicDisplay view with a playback cursor, from
   MusicXML converted server-side.
 - **WebMIDI input**: Auto-detects keyboards, captures note on/off and CC.
@@ -76,6 +80,11 @@ Run `npm run dev:all` to start the front end and the backend together;
   auto-selects a matching profile.
 - **Profile validation**: Every profile is checked at load; `npm run
   validate:profiles` and CI check them too.
+- **SysEx parameter editor**: Renders a profile's `sysex.commands` as sliders
+  or named dropdowns, with a live preview of the bytes it will transmit.
+- **Profile capture**: Steps a connected keyboard through Bank Select +
+  Program Change so you can read patch names off the instrument's own display
+  and export a validated profile — no MIDI implementation chart required.
 - **Roland Juno-G and Generic GM profiles**, with an LCD-style patch display.
 - **Mobile-optimized UI**.
 
@@ -229,6 +238,7 @@ keyfall/
 │   │   ├── playback.js        # Clock, wait mode, hand modes, section repeat
 │   │   ├── scoring.js         # Hit/miss judging, accuracy, combo
 │   │   ├── fingering.js       # Automatic fingering assignment
+│   │   ├── recorder.js        # Take capture and replay
 │   │   ├── metronome.js       # Click track + count-in from the tempo map
 │   │   ├── audio.js           # Instrument facade (synth / sampled)
 │   │   ├── audio-context.js   # Shared AudioContext + master bus
@@ -243,6 +253,8 @@ keyfall/
 │   │   ├── profile-loader.js  # Load, validate and normalise profiles
 │   │   ├── effects-ui.js      # Slider and toggle rendering
 │   │   ├── sysex-ui.js        # SysEx parameter editor
+│   │   ├── builder-ui.js      # Profile capture screen
+│   │   ├── profile-draft.js   # Profile-under-construction model
 │   │   └── ui.js              # Controller layout, bank/patch list, LCD
 │   ├── songs/ui.js            # Song library screen
 │   ├── settings/ui.js         # Settings screen
@@ -253,6 +265,7 @@ keyfall/
 │   │   ├── settings.js        # User preferences
 │   │   ├── mirror.js          # WebSocket host/client
 │   │   ├── app-mirror.js      # Mirror state aggregation + command routing
+│   │   ├── gestures.js        # Pinch / pan / swipe recognition
 │   │   ├── wake-lock.js       # Keep the screen awake
 │   │   └── fonts.js           # Self-hosted IBM Plex imports
 │   └── profiles/
@@ -265,7 +278,8 @@ keyfall/
 │   └── Dockerfile             # Includes the music21 converter
 ├── test/                      # Test suite — `npm test`
 ├── public/samples/piano/      # Salamander Grand samples (CC BY 3.0)
-├── scripts/                   # dev-all, validate-profiles, build-piano-samples
+├── docs/                      # Documentation site source (npm run docs)
+├── scripts/                   # dev-all, validate-profiles, build-piano-samples, build-docs
 ├── docs/
 │   ├── adding-a-profile.md
 │   └── profile-schema.md
@@ -321,15 +335,16 @@ Phases 1-3 are essentially done. Remaining work is listed under "Not done yet".
 - [x] MIDI output playback through the keyboard's own sounds
 - [x] Custom colours and themes
 - [x] Fingering numbers and solfège labels
-- [ ] Recording mode with playback comparison
-- [ ] Mobile touch improvements (pinch zoom, swipe navigation)
+- [x] Recording mode with playback comparison
+- [x] Mobile touch improvements (pinch zoom, swipe navigation)
 
 ### Phase 5: Community
 - [x] Profile contribution guide with a validation CLI
 - [x] CI validating profile JSON on PR
 - [ ] MIDI file library (links to freely available sources, not hosted files)
-- [ ] Documentation site
-- [ ] More profiles: Juno-DS, Yamaha PSR, Korg Minilogue, Nord Stage
+- [x] Documentation site
+- [~] More profiles: the capture screen makes them producible from the
+      hardware; the profiles themselves still need someone with each keyboard
 
 ### Not done yet — the honest list
 - Recording and playback comparison

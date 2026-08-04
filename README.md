@@ -6,7 +6,8 @@ Open-source piano trainer and universal MIDI keyboard controller. Two tools in o
 - **Controller** — Browse patches, tweak effects, and edit SysEx parameters from a phone or tablet — driven by JSON keyboard profiles so any hardware can be supported without code changes.
 - **Mirror** — Pair a second device with a 6-digit code and drive the whole thing from an iPad on the music stand.
 
-See `CLAUDE.md` for the architecture, roadmap, and rationale.
+Full documentation: **[docs/](docs/index.md)** — or build the site with
+`npm run docs`. See `CLAUDE.md` for the roadmap and design rationale.
 
 ## Quick start
 
@@ -42,6 +43,16 @@ npm test parser       # just files matching "parser"
 Plain Node scripts, no test framework. Tests that need the backend's `ws`
 dependency or a browser skip themselves with a note when those aren't
 installed; `npm run test:setup` installs both so the full suite runs.
+
+### Documentation
+
+```bash
+npm run docs         # build the site into docs-site/
+npm run docs:serve   # build and serve it locally
+```
+
+The pages are the same markdown files in `docs/` that you can read in the
+repo, so there's no second copy to drift. CI publishes them to GitHub Pages.
 
 ### Docker
 

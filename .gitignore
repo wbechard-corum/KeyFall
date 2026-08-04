@@ -8,3 +8,4 @@ dist/
 
 # Local song storage created by `npm run dev:all`.
 .data/
+docs-site/
