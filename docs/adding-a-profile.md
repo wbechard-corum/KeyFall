@@ -40,6 +40,37 @@ If patch names aren't known, leave the array empty. The loader fills in `Bank Pa
 
 Populate `identityResponse` with the bytes returned by a connected keyboard. Use the controller's **SEND IDENTITY REQUEST** button in the settings tab — the reply is displayed and can be pasted directly into the profile.
 
+## Capturing a profile from the keyboard itself
+
+You do not need the MIDI implementation chart to get started. The
+**PATCHES → CAPTURE** screen turns the instrument into the source:
+
+1. Connect the keyboard and enter its manufacturer and model. The profile id
+   is suggested from those; edit it if you want something else.
+2. **READ IDENTITY** sends a Universal Identity Request and fills in
+   `identityResponse` from the reply, so the app can auto-select this profile
+   next time the keyboard is plugged in. Optional — not every instrument
+   answers.
+3. **ADD BANK**, then set its MSB and LSB. If you don't know them, try values
+   and listen: selecting a slot sends Bank Select + Program Change
+   immediately, so a wrong bank is obvious.
+4. Now step through the slots. Each one is sent to the keyboard, which shows
+   the patch name **on its own display**. Type what you see and press Enter —
+   that stores the name and moves to the next slot. **SKIP** leaves a slot
+   blank, which is how you record the gaps a bank actually has.
+5. **DOWNLOAD JSON** when the validator is happy.
+
+The draft is saved as you go, so closing the tab partway through a 128-patch
+bank doesn't lose the work.
+
+Trailing unnamed slots are dropped on export — a bank scanned as far as PC 40
+declares 41 patches, not 128 mostly-empty ones. A gap *between* named slots is
+kept, since a blank slot in the middle is real information about the
+instrument.
+
+To ship the result, drop the file into `src/profiles/` and add it to the
+registry in `src/profiles/index.js`.
+
 ## Validating your profile
 
 ```bash

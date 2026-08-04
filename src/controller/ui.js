@@ -1,6 +1,7 @@
 import { createController } from './controller.js';
 import { mountEffects, mountControls } from './effects-ui.js';
 import { mountSysEx } from './sysex-ui.js';
+import { mountProfileBuilder } from './builder-ui.js';
 import { availableProfiles } from './profile-loader.js';
 import { onTx } from '../midi/output.js';
 import { onStateChange } from '../midi/connection.js';
@@ -36,6 +37,7 @@ const TEMPLATE = `
       <button class="tab-btn" data-tab="effects">EFFECTS</button>
       <button class="tab-btn" data-tab="controls">CONTROLS</button>
       <button class="tab-btn" data-tab="sysex">SYSEX</button>
+      <button class="tab-btn" data-tab="capture" title="Build a profile from a connected keyboard">CAPTURE</button>
     </div>
 
     <div class="patch-list" data-role="patch-list"></div>
@@ -51,6 +53,8 @@ const TEMPLATE = `
     <div class="sysex-panel hidden" data-role="sysex-panel">
       <div class="sysex-list" data-role="sysex-list"></div>
     </div>
+
+    <div class="builder-panel hidden" data-role="builder-panel"></div>
 
     <div class="footer">
       <span><span class="midi-activity" data-role="midi-led"></span>MIDI <span data-role="footer-status">IDLE</span></span>
@@ -68,6 +72,7 @@ export function mountController(root) {
   let activeTab = 'patches';
   let lastRenderedBankKey = null;  // `${profileId}:${bankIndex}` — triggers patch-list rebuild
   let lastRenderedBanksFor = null; // profile id for bank bar
+  let builder = null;
 
   buildProfileSelect();
   $('[data-role="footer-version"]').textContent = `v${__APP_VERSION__}`;
@@ -112,6 +117,7 @@ export function mountController(root) {
     $('[data-role="effects-panel"]').classList.toggle('hidden', tab !== 'effects');
     $('[data-role="controls-panel"]').classList.toggle('hidden', tab !== 'controls');
     $('[data-role="sysex-panel"]').classList.toggle('hidden', tab !== 'sysex');
+    $('[data-role="builder-panel"]').classList.toggle('hidden', tab !== 'capture');
     render(controller.getSnapshot());
   }
 
@@ -166,6 +172,15 @@ export function mountController(root) {
             onPreview: (id, value) => controller.previewSysExParameter(id, value),
           });
       update(snap.sysexValues || {});
+    }
+    if (activeTab === 'capture') {
+      // Mounted lazily and kept alive — the draft is long-lived work and
+      // rebuilding it on every render would fight the text field.
+      if (!builder) {
+        builder = mountProfileBuilder($('[data-role="builder-panel"]'), {
+          getChannel: () => controller.getSnapshot().channel,
+        });
+      }
     }
   }
 
@@ -235,6 +250,7 @@ export function mountController(root) {
       unsubscribeMIDI();
       unsubscribeTx();
       unsubscribeMirrorPublish();
+      builder?.destroy();
     },
   };
 }
