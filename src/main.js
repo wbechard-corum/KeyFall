@@ -1,3 +1,4 @@
+import './shared/fonts.js';
 import { requestAccess, onStateChange, autoSelect } from './midi/connection.js';
 import { mountTrainer } from './trainer/ui.js';
 import { mountController } from './controller/ui.js';

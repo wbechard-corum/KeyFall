@@ -55,6 +55,16 @@ try {
     await route.fulfill({ response: res });
   });
 
+  // Anything the page fetches from another origin would break the offline
+  // PWA and leak a request to a third party.
+  const external = [];
+  page.on('request', (req) => {
+    const url = new URL(req.url());
+    if (!['127.0.0.1', 'localhost'].includes(url.hostname) && url.protocol.startsWith('http')) {
+      external.push(req.url());
+    }
+  });
+
   const errors = [];
   page.on('console', m => {
     const t = m.text();
@@ -71,6 +81,21 @@ try {
   check('version label populated', /^v\d/.test((await page.locator('#appVersion').textContent()) || ''),
     await page.locator('#appVersion').textContent());
   check('no console errors on boot', errors.length === 0, errors.join(' | '));
+
+  console.log('offline readiness');
+  check('nothing is fetched from a third party', external.length === 0, external.join(' | '));
+  const fonts = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const loaded = [...document.fonts].filter(f => f.status === 'loaded');
+    return {
+      families: [...new Set(loaded.map(f => f.family))],
+      // Does the rendered UI actually resolve to the bundled face?
+      navFont: getComputedStyle(document.querySelector('.mode-brand')).fontFamily,
+    };
+  });
+  check('IBM Plex is loaded from the bundle',
+    fonts.families.some(f => /IBM Plex/i.test(f)), JSON.stringify(fonts.families));
+  check('the UI asks for IBM Plex', /IBM Plex/i.test(fonts.navFont), fonts.navFont);
 
   console.log('trainer: load a demo and play');
   errors.length = 0;
