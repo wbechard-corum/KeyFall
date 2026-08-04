@@ -44,10 +44,19 @@ export async function loadWs() {
 }
 
 export async function loadPlaywright() {
+  const chromium = await loadPlaywrightOptional();
+  if (!chromium) skip('playwright not installed — run `npm run test:setup`');
+  return chromium;
+}
+
+// For files that mix pure checks with browser checks: returns null instead of
+// exiting, so the pure half still runs and still counts. Skipping the whole
+// file for want of a browser would silently discard real coverage.
+export async function loadPlaywrightOptional() {
   const req = createRequire(path.join(repoRoot, 'package.json'));
   let entry;
   try { entry = req.resolve('playwright'); }
-  catch { skip('playwright not installed — run `npm run test:setup`'); }
+  catch { return null; }
   const mod = await import(`file://${entry}`);
   return mod.chromium || mod.default?.chromium;
 }

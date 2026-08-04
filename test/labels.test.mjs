@@ -1,6 +1,6 @@
 // Fingering assignment, solfège naming, and key-signature parsing.
-import { check, finish, repoRoot, sleep,
-         loadPlaywright, chromiumExecutable, waitForHttp } from './helpers.mjs';
+import { check, finish, note, repoRoot, sleep,
+         loadPlaywrightOptional, chromiumExecutable, waitForHttp } from './helpers.mjs';
 import { spawn } from 'node:child_process';
 import { assignFingering } from '../src/trainer/fingering.js';
 import { solfegeName, tonicPitchClass, SOLFEGE } from '../src/shared/constants.js';
@@ -203,7 +203,11 @@ console.log('key signature parsing');
 }
 
 // ── 7. The labels actually render ────────────────────────────────────────
-const chromium = await loadPlaywright();
+const chromium = await loadPlaywrightOptional();
+if (!chromium) {
+  note('browser checks skipped — playwright not installed (npm run test:setup)');
+  finish('labels');
+}
 const vite = spawn('npx', ['vite', '--port', '5215', '--strictPort'], {
   cwd: repoRoot, stdio: 'ignore',
 });

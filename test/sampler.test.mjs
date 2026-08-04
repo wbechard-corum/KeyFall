@@ -2,7 +2,7 @@
 // and drives the real sampler in Chromium against the real files, rendering
 // audio offline to confirm it makes sound and picks the right sample.
 import { check, finish, note, sleep, skip, repoRoot,
-         loadPlaywright, chromiumExecutable, waitForHttp } from './helpers.mjs';
+         loadPlaywrightOptional, chromiumExecutable, waitForHttp } from './helpers.mjs';
 import { readFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -51,7 +51,11 @@ const files = new Set(await readdir(sampleDir));
 }
 
 // ── 2. Drive the real sampler in Chromium ────────────────────────────────
-const chromium = await loadPlaywright();
+const chromium = await loadPlaywrightOptional();
+if (!chromium) {
+  note('browser checks skipped — playwright not installed (npm run test:setup)');
+  finish('sampler');
+}
 
 const vite = spawn('npx', ['vite', '--port', '5211', '--strictPort'], {
   cwd: repoRoot, stdio: 'ignore',

@@ -1,7 +1,7 @@
 // Roland DT1 message construction and the SysEx parameter editor. These
 // bytes go to real hardware, so the encoding is worth pinning down precisely.
-import { check, finish, repoRoot, sleep,
-         loadPlaywright, chromiumExecutable, waitForHttp } from './helpers.mjs';
+import { check, finish, note, repoRoot, sleep,
+         loadPlaywrightOptional, chromiumExecutable, waitForHttp } from './helpers.mjs';
 import { spawn } from 'node:child_process';
 import {
   buildRolandDT1, rolandChecksum, buildSysEx,
@@ -146,7 +146,11 @@ console.log('profile sysex metadata');
 }
 
 // ── 6. The editor screen, in a browser ───────────────────────────────────
-const chromium = await loadPlaywright();
+const chromium = await loadPlaywrightOptional();
+if (!chromium) {
+  note('browser checks skipped — playwright not installed (npm run test:setup)');
+  finish('sysex');
+}
 const vite = spawn('npx', ['vite', '--port', '5213', '--strictPort'], {
   cwd: repoRoot, stdio: 'ignore',
 });
