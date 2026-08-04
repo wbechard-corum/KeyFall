@@ -1,7 +1,7 @@
 import {
-  COLORS, NOTE_NAMES, RATING_COLORS, resolveHandMode, solfegeName,
+  COLORS, NOTE_NAMES, RATING_COLORS, resolveHandMode, solfegeName, PIANO_MIN, PIANO_MAX,
 } from '../shared/constants.js';
-import { computeKeyLayout, getNoteX, getNoteWidth } from '../shared/piano-keyboard.js';
+import { computeKeyLayout, getNoteX, getNoteWidth, resolveRange } from '../shared/piano-keyboard.js';
 
 const BOTH_HANDS = [resolveHandMode('both'), resolveHandMode('both')];
 
@@ -124,6 +124,58 @@ export function createRenderer(canvas) {
     state.keyboardRange = range;
     if (state.W) state.layout = computeKeyLayout(state.W, state.keyboardRange);
   }
+
+  // ── Zoom and pan ────────────────────────────────────────────────────────
+  // The key-count presets are convenient, but on a phone you want to pinch
+  // down to the two octaves you're actually playing. Both are the same thing
+  // underneath: an explicit {min, max} MIDI range.
+
+  const MIN_VISIBLE_KEYS = 12;
+
+  function currentRange() {
+    return state.layout?.range ?? resolveRange(state.keyboardRange);
+  }
+
+  function applyRange(min, max) {
+    // Keep the window inside the piano and never smaller than an octave.
+    let lo = Math.round(min);
+    let hi = Math.round(max);
+    if (hi - lo + 1 < MIN_VISIBLE_KEYS) hi = lo + MIN_VISIBLE_KEYS - 1;
+    if (lo < PIANO_MIN) { hi += PIANO_MIN - lo; lo = PIANO_MIN; }
+    if (hi > PIANO_MAX) { lo -= hi - PIANO_MAX; hi = PIANO_MAX; }
+    lo = Math.max(PIANO_MIN, lo);
+    hi = Math.min(PIANO_MAX, hi);
+    setKeyboardRange({ min: lo, max: hi });
+    return { min: lo, max: hi };
+  }
+
+  // `anchorRatio` is where the pinch centre sits across the width (0..1); the
+  // key under it stays put, which is what makes a pinch feel anchored rather
+  // than like the whole keyboard sliding.
+  function zoomKeyboard(scale, anchorRatio = 0.5) {
+    if (!Number.isFinite(scale) || scale <= 0) return currentRange();
+    const { min, max } = currentRange();
+    const span = max - min + 1;
+    const nextSpan = Math.max(MIN_VISIBLE_KEYS,
+      Math.min(PIANO_MAX - PIANO_MIN + 1, Math.round(span / scale)));
+    const anchorKey = min + span * Math.max(0, Math.min(1, anchorRatio));
+    const lo = anchorKey - nextSpan * Math.max(0, Math.min(1, anchorRatio));
+    return applyRange(lo, lo + nextSpan - 1);
+  }
+
+  // Positive `deltaKeys` moves the window up the keyboard.
+  function panKeyboard(deltaKeys) {
+    const { min, max } = currentRange();
+    return applyRange(min + deltaKeys, max + deltaKeys);
+  }
+
+  // How many keys a horizontal pixel distance corresponds to right now.
+  function keysPerPixel() {
+    const { min, max } = currentRange();
+    return state.W > 0 ? (max - min + 1) / state.W : 0;
+  }
+
+  function getRange() { return currentRange(); }
 
   function setColors(next = {}) {
     Object.assign(state.colors, next);
@@ -494,6 +546,10 @@ export function createRenderer(canvas) {
     resize,
     render,
     setKeyboardRange,
+    zoomKeyboard,
+    panKeyboard,
+    keysPerPixel,
+    getRange,
     setColors,
     setLabelMode,
     setNoteLabelMode,

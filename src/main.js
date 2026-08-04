@@ -7,6 +7,7 @@ import { mountSettings } from './settings/ui.js';
 import { mountMirrorClient } from './mirror-client/ui.js';
 import { getSettings, updateSettings } from './shared/settings.js';
 import { keepAwake } from './shared/wake-lock.js';
+import { onSwipe } from './shared/gestures.js';
 
 const views = {
   trainer: {
@@ -54,10 +55,31 @@ function setMode(mode) {
   updateSettings({ mode });
 }
 
+const MODE_ORDER = ['trainer', 'songs', 'controller', 'settings'];
+
+function stepMode(delta) {
+  const current = getSettings().mode || 'trainer';
+  const i = MODE_ORDER.indexOf(current);
+  const next = MODE_ORDER[(i + delta + MODE_ORDER.length) % MODE_ORDER.length];
+  setMode(next);
+}
+
 function setupModeSwitcher() {
   document.querySelectorAll('.mode-tab').forEach(btn => {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
   });
+
+  // Swipe the nav bar to move between tabs. Deliberately scoped to the nav
+  // rather than the whole app: a swipe across the trainer would fight the
+  // keyboard pan, and across the song list it would fight scrolling.
+  const nav = document.getElementById('modeNav');
+  if (nav) {
+    onSwipe(nav, ({ direction }) => {
+      if (direction === 'left') stepMode(1);
+      else if (direction === 'right') stepMode(-1);
+    });
+  }
+
   const { mode } = getSettings();
   setMode(mode || 'trainer');
 }

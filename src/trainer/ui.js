@@ -19,6 +19,7 @@ import { createSheet, retryNotation } from './sheet.js';
 import { createMetronome } from './metronome.js';
 import { ensureFingering } from './fingering.js';
 import { createRecorder, createTakePlayer, normaliseTake } from './recorder.js';
+import { createGestureTarget } from '../shared/gestures.js';
 
 const TEMPLATE = `
   <div class="trainer-root">
@@ -693,8 +694,10 @@ export function mountTrainer(root) {
     $('[data-action="view-sheet"]').addEventListener('click', () => setView('sheet'));
 
     const keysSelect = $('[data-action="keys"]');
-    const savedRange = Number(getSetting('keyboardRange') || 88);
-    keysSelect.value = String(savedRange);
+    const savedRange = getSetting('keyboardRange') ?? 88;
+    // A pinch stores an explicit range, which matches no preset — leave the
+    // dropdown blank in that case rather than lying about the current zoom.
+    keysSelect.value = typeof savedRange === 'number' ? String(savedRange) : '';
     renderer.setKeyboardRange(savedRange);
     keysSelect.addEventListener('change', (e) => {
       const v = Number(e.target.value) || 88;
@@ -744,8 +747,8 @@ export function mountTrainer(root) {
         render();
       }
       if ('keyboardRange' in patch) {
-        const nv = Number(s.keyboardRange) || 88;
-        keysSelect.value = String(nv);
+        const nv = s.keyboardRange ?? 88;
+        keysSelect.value = typeof nv === 'number' ? String(nv) : '';
         renderer.setKeyboardRange(nv);
         render();
       }
@@ -794,12 +797,30 @@ export function mountTrainer(root) {
     $$('[data-action="open"]').forEach(el => el.addEventListener('click', openFile));
     $('[data-role="file-input"]').addEventListener('change', (e) => loadFile(e.target.files[0]));
 
-    $('[data-action="seek"]').addEventListener('click', (e) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const pct = (e.clientX - rect.left) / rect.width;
-      playback.seekPct(pct);
+    // Scrubbing: press and drag anywhere along the bar. A 3px-tall click
+    // target is hard enough to hit on a phone without also demanding you
+    // land on the exact spot first time.
+    const seekBar = $('[data-action="seek"]');
+    let scrubbing = false;
+    const seekTo = (clientX) => {
+      const rect = seekBar.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      playback.seekPct(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)));
       takePlayer.reset(playback.getCurrentTime());
+    };
+    seekBar.addEventListener('pointerdown', (e) => {
+      scrubbing = true;
+      try { seekBar.setPointerCapture(e.pointerId); } catch { /* not supported */ }
+      seekTo(e.clientX);
     });
+    seekBar.addEventListener('pointermove', (e) => { if (scrubbing) seekTo(e.clientX); });
+    const endScrub = (e) => {
+      if (!scrubbing) return;
+      scrubbing = false;
+      try { seekBar.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
+    };
+    seekBar.addEventListener('pointerup', endScrub);
+    seekBar.addEventListener('pointercancel', endScrub);
   }
 
   function setupDragDrop() {
@@ -823,9 +844,59 @@ export function mountTrainer(root) {
   // pressedKeys, which also cleared notes being held down on the physical
   // MIDI keyboard, and dragging off the canvas left keys stuck on.
   const touchNotes = new Map();
+  let gestures = null;
+
+  // Pinch to zoom the keyboard, drag in the note area to pan. The piano
+  // itself stays reserved for playing — panning from there would make every
+  // slightly-imprecise tap slide the keyboard instead of sounding a note.
+  function setupCanvasGestures() {
+    const inPianoArea = (clientY) => {
+      const rect = canvas.getBoundingClientRect();
+      const { H, pianoHeight } = renderer.getState();
+      return (clientY - rect.top) >= (H - pianoHeight);
+    };
+
+    gestures = createGestureTarget(canvas, {
+      allowPan: (e) => !inPianoArea(e.clientY),
+      onGestureStart: () => {
+        // A second finger turns a tap into a pinch: release anything the
+        // first finger already started sounding.
+        for (const [pointerId, midi] of touchNotes) {
+          touchNotes.delete(pointerId);
+          noteOff(midi);
+        }
+      },
+      onPinch: ({ scale, centerX }) => {
+        const rect = canvas.getBoundingClientRect();
+        const ratio = rect.width > 0 ? (centerX - rect.left) / rect.width : 0.5;
+        renderer.zoomKeyboard(scale, ratio);
+        persistRange();
+        render();
+      },
+      onPan: ({ dx }) => {
+        if (dx === 0) return;
+        renderer.panKeyboard(-dx * renderer.keysPerPixel());
+        persistRange();
+        render();
+      },
+    });
+  }
+
+  // Zooming writes an explicit {min,max}; the KEYS dropdown writes a preset.
+  // Both end up in the same setting, so whichever you used last is restored.
+  let persistRangeTimer = null;
+  function persistRange() {
+    if (persistRangeTimer) clearTimeout(persistRangeTimer);
+    persistRangeTimer = setTimeout(() => {
+      persistRangeTimer = null;
+      updateSettings({ keyboardRange: { ...renderer.getRange() } });
+    }, 250);
+  }
 
   function setupTouchPiano() {
     canvas.addEventListener('pointerdown', (e) => {
+      // A pinch in progress owns the pointers; don't also play notes.
+      if (gestures?.isGesturing() || gestures?.pointerCount() > 1) return;
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -1050,6 +1121,7 @@ export function mountTrainer(root) {
   renderLoop();
   renderRecordState();
   setupDragDrop();
+  setupCanvasGestures();
   setupTouchPiano();
   render();
   publishTrainerState();
@@ -1072,6 +1144,7 @@ export function mountTrainer(root) {
     destroy() {
       clearInterval(tickInterval);
       resizeObserver.disconnect();
+      gestures?.destroy();
       unsubscribeMIDI();
       unsubscribeCC();
       unsubscribeSettings();
