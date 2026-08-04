@@ -12,6 +12,11 @@ const DEFAULTS = {
   // Practice state, remembered between sessions.
   waitMode: false,
   handModes: ['both', 'both'],   // [right, left] — see HAND_MODES
+  metronome: false,
+  beatsPerBar: 4,
+  countInBars: 0,                // 0 = start immediately
+  lookAheadSeconds: 3,           // height of the falling-note window
+  inputLatencyMs: 0,             // positive = your input arrives late
 
   // Colors are configurable in the top-level Settings tab. Null for
   // cKeyColor means Cs look like any other white.

@@ -2766,3 +2766,19 @@ canvas { display: block; width: 100%; height: 100%; }
   background: var(--accent);
   box-shadow: 0 0 6px var(--accent);
 }
+
+/* Practice settings: sliders for look-ahead and input offset. */
+.settings-range {
+  width: 180px;
+  max-width: 100%;
+  accent-color: var(--accent);
+  vertical-align: middle;
+}
+.settings-range-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  min-width: 52px;
+  display: inline-block;
+  padding-left: 8px;
+}

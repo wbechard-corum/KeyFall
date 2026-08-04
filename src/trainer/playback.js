@@ -29,6 +29,10 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     loopEnd: null,
     loopEnabled: false,
     loopCount: 0,
+    // Seconds to subtract from a press's arrival time before judging it.
+    // USB MIDI, Bluetooth and the audio output all add latency, which
+    // otherwise shows up as the player being consistently "late".
+    inputLatency: 0,
     lastFrameTime: 0,
     animFrameId: null,
     // Cursors into song.notes (sorted by startTime). They turn what used to
@@ -96,6 +100,14 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
   }
 
   function setSpeed(v) { state.playSpeed = Number(v) || 1; }
+
+  // When the press physically happened, as far as scoring is concerned.
+  function judgedTime() { return state.currentTime - state.inputLatency; }
+
+  function setInputLatency(seconds) {
+    const v = Number(seconds);
+    state.inputLatency = Number.isFinite(v) ? Math.max(-0.5, Math.min(0.5, v)) : 0;
+  }
 
   function setWaitMode(enabled) {
     state.waitMode = !!enabled;
@@ -376,7 +388,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     // Free play: no chord stalling, just grade the press. This path did not
     // exist before — with wait mode off nothing was ever scored.
     if (!state.waitMode) {
-      scorer.judgePress(state.song, midiNote, state.currentTime, state.scanIndex, isScored);
+      scorer.judgePress(state.song, midiNote, judgedTime(), state.scanIndex, isScored);
       emitScore();
       return;
     }
@@ -443,6 +455,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     cycleHandMode,
     getHandMode,
     handStates,
+    setInputLatency,
     setLoopPoint,
     clearLoop,
     setLoopEnabled,

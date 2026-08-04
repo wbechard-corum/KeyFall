@@ -38,6 +38,41 @@ const TEMPLATE = `
 
       <div class="settings-card">
         <div class="settings-card-head">
+          <div class="settings-card-title">Practice</div>
+          <div class="settings-card-sub">Timing, the click track, and how far ahead you see.</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Look ahead</div>
+          <div class="settings-row-value">
+            <input class="settings-range" type="range" min="1" max="8" step="0.5"
+                   data-role="lookahead-input">
+            <span class="settings-range-value" data-role="lookahead-value">3.0s</span>
+            <span class="settings-row-hint">HEIGHT OF THE FALLING-NOTE WINDOW.</span>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Input offset</div>
+          <div class="settings-row-value">
+            <input class="settings-range" type="range" min="-200" max="200" step="5"
+                   data-role="latency-input">
+            <span class="settings-range-value" data-role="latency-value">0 ms</span>
+            <span class="settings-row-hint">
+              RAISE IF YOU'RE MARKED LATE WHEN PLAYING IN TIME.
+            </span>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Beats per bar</div>
+          <div class="settings-row-value" data-role="beats-per-bar"></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Count-in</div>
+          <div class="settings-row-value" data-role="count-in"></div>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <div class="settings-card-head">
           <div class="settings-card-title">Key colors</div>
           <div class="settings-card-sub">All C keys share the same color across every octave.</div>
         </div>
@@ -148,6 +183,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
 
   buildKeyRange();
   buildLabelMode();
+  buildPracticeControls();
   buildColorRow('[data-role="ck-color"]', 'cKeyColor', KEY_SWATCHES_C);
   buildColorRow('[data-role="wk-color"]', 'whiteKeyColor', KEY_SWATCHES_WHITE);
   buildColorRow('[data-role="bk-color"]', 'blackKeyColor', KEY_SWATCHES_BLACK);
@@ -188,6 +224,22 @@ export function mountSettings(root, { onProfileChange } = {}) {
     // The controller view has its own profile picker, and auto-detection can
     // switch profiles on its own. Keep this one in step instead of showing
     // whatever was selected when the tab was first built.
+    for (const [sel, key, fallback] of [
+      ['[data-role="beats-per-bar"]', 'beatsPerBar', 4],
+      ['[data-role="count-in"]', 'countInBars', 0],
+    ]) {
+      const value = s[key] ?? fallback;
+      $(sel).querySelectorAll('button').forEach(btn => {
+        btn.classList.toggle('active', Number(btn.dataset.value) === Number(value));
+      });
+    }
+    const look = $('[data-role="lookahead-input"]');
+    if (document.activeElement !== look) look.value = String(Number(s.lookAheadSeconds) || 3);
+    $('[data-role="lookahead-value"]').textContent = `${Number(look.value).toFixed(1)}s`;
+    const lat = $('[data-role="latency-input"]');
+    if (document.activeElement !== lat) lat.value = String(Number(s.inputLatencyMs) || 0);
+    $('[data-role="latency-value"]').textContent = `${lat.value} ms`;
+
     const profileSel = $('[data-role="profile-select"]');
     const wanted = s.selectedProfileId || loadDefaultProfile().id;
     if (profileSel.value !== wanted) profileSel.value = wanted;
@@ -225,6 +277,46 @@ export function mountSettings(root, { onProfileChange } = {}) {
       host.appendChild(btn);
     }
     if (hint) host.appendChild(hint);
+  }
+
+  function buildChipRow(sel, settingKey, options, fallback) {
+    const host = $(sel);
+    host.innerHTML = '';
+    const current = getSettings()[settingKey] ?? fallback;
+    for (const [value, label] of options) {
+      const btn = document.createElement('button');
+      btn.className = 'settings-chip';
+      btn.dataset.value = String(value);
+      btn.textContent = label;
+      if (value === current) btn.classList.add('active');
+      btn.addEventListener('click', () => updateSettings({ [settingKey]: value }));
+      host.appendChild(btn);
+    }
+  }
+
+  function buildPracticeControls() {
+    const s = getSettings();
+
+    const look = $('[data-role="lookahead-input"]');
+    look.value = String(Number(s.lookAheadSeconds) || 3);
+    $('[data-role="lookahead-value"]').textContent = `${Number(look.value).toFixed(1)}s`;
+    look.addEventListener('input', () => {
+      $('[data-role="lookahead-value"]').textContent = `${Number(look.value).toFixed(1)}s`;
+      updateSettings({ lookAheadSeconds: Number(look.value) });
+    });
+
+    const lat = $('[data-role="latency-input"]');
+    lat.value = String(Number(s.inputLatencyMs) || 0);
+    $('[data-role="latency-value"]').textContent = `${lat.value} ms`;
+    lat.addEventListener('input', () => {
+      $('[data-role="latency-value"]').textContent = `${lat.value} ms`;
+      updateSettings({ inputLatencyMs: Number(lat.value) });
+    });
+
+    buildChipRow('[data-role="beats-per-bar"]', 'beatsPerBar',
+      [[2, '2'], [3, '3'], [4, '4'], [6, '6']], 4);
+    buildChipRow('[data-role="count-in"]', 'countInBars',
+      [[0, 'Off'], [1, '1 bar'], [2, '2 bars']], 0);
   }
 
   function buildColorRow(sel, settingKey, swatches) {

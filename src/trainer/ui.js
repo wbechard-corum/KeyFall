@@ -16,6 +16,7 @@ import { getSong } from './library.js';
 import { DEMOS } from './demos.js';
 import { saveSong } from './library.js';
 import { createSheet, retryNotation } from './sheet.js';
+import { createMetronome } from './metronome.js';
 
 const TEMPLATE = `
   <div class="trainer-root">
@@ -36,6 +37,7 @@ const TEMPLATE = `
       </div>
 
       <button class="ctrl-btn" data-action="wait">WAIT</button>
+      <button class="ctrl-btn" data-action="metronome" title="Click track, locked to the song's tempo map">MET</button>
 
       <div class="ctrl-group loop-group" data-role="loop-group">
         <span class="ctrl-label">LOOP</span>
@@ -153,8 +155,16 @@ export function mountTrainer(root) {
   // expects.
   const pressedKeys = new Map();
 
+  const metronome = createMetronome();
+
   const playback = createPlayback({
-    onTick: () => render(),
+    onTick: () => {
+      // Only the real playback tick schedules clicks; render() is also
+      // called from idle repaints and key events, which must stay silent.
+      metronome.schedule(playback.state.song, playback.state.currentTime,
+                         playback.state.playSpeed);
+      render();
+    },
     onEnded: () => { setPlayButtonState(false); showSummary(); },
     onPlayStateChange: (playing) => {
       setPlayButtonState(playing);
@@ -162,7 +172,10 @@ export function mountTrainer(root) {
     },
     onWaitChange: () => render(),
     onScoreChange: (score) => renderScore(score),
-    onLoopChange: () => renderLoop(),
+    onLoopChange: () => {
+      metronome.resync(playback.state.song, playback.state.currentTime);
+      renderLoop();
+    },
   });
 
   playback.onNotePlay((note) => {
@@ -285,6 +298,33 @@ export function mountTrainer(root) {
 
   function hideSummary() {
     $('[data-role="score-summary"]').classList.add('hidden');
+  }
+
+  // PLAY, with an optional count-in. `counting` guards against a second tap
+  // (or a remote command) starting the song twice while clicks are running.
+  let counting = false;
+
+  async function togglePlay() {
+    if (!playback.state.song) return;
+    if (counting) return;
+    if (playback.isPlaying()) { playback.pause(); return; }
+
+    resumeAudio();
+    const bars = Number(getSetting('countInBars')) || 0;
+    if (bars > 0) {
+      counting = true;
+      setPlayButtonState(true);
+      $('[data-action="play"]').textContent = '···';
+      try {
+        await metronome.countIn(playback.state.song, playback.getCurrentTime(), bars);
+      } finally {
+        counting = false;
+      }
+      // The user may have hit STOP or switched songs during the count-in.
+      if (!playback.state.song) { setPlayButtonState(false); return; }
+    }
+    metronome.resync(playback.state.song, playback.getCurrentTime());
+    playback.play();
   }
 
   function renderLoop() {
@@ -507,10 +547,7 @@ export function mountTrainer(root) {
   }
 
   function setupControls() {
-    $('[data-action="play"]').addEventListener('click', () => {
-      if (!playback.state.song) return;
-      playback.isPlaying() ? playback.pause() : playback.play();
-    });
+    $('[data-action="play"]').addEventListener('click', () => togglePlay());
     $('[data-action="stop"]').addEventListener('click', () => playback.stop());
     $('[data-action="speed"]').addEventListener('change', (e) => playback.setSpeed(e.target.value));
     $('[data-action="wait"]').addEventListener('click', (e) => {
@@ -519,11 +556,21 @@ export function mountTrainer(root) {
       updateSettings({ waitMode: enabled });
       e.currentTarget.classList.toggle('active', enabled);
     });
+    $('[data-action="metronome"]').addEventListener('click', (e) => {
+      const on = !e.currentTarget.classList.contains('active');
+      metronome.setEnabled(on);
+      metronome.resync(playback.state.song, playback.getCurrentTime());
+      updateSettings({ metronome: on });
+      e.currentTarget.classList.toggle('active', on);
+      resumeAudio();
+    });
+
     $('[data-action="midi-out"]').addEventListener('click', (e) => {
       setMidiOutEnabled(!e.currentTarget.classList.contains('active'));
     });
     if (midiOutEnabled) $('[data-action="midi-out"]').classList.add('active');
     if (playback.state.waitMode) $('[data-action="wait"]').classList.add('active');
+    if (metronome.isEnabled()) $('[data-action="metronome"]').classList.add('active');
 
     $('[data-action="view-notes"]').addEventListener('click', () => setView('notes'));
     $('[data-action="view-sheet"]').addEventListener('click', () => setView('sheet'));
@@ -541,6 +588,13 @@ export function mountTrainer(root) {
 
     // Apply color + label-mode settings from storage and keep them
     // in sync with changes made in the Settings tab.
+    function applyPracticeSettings(s = getSettings()) {
+      renderer.setFallTime(Number(s.lookAheadSeconds) || 3);
+      playback.setInputLatency((Number(s.inputLatencyMs) || 0) / 1000);
+      metronome.setBeatsPerBar(s.beatsPerBar);
+    }
+    applyPracticeSettings();
+
     function applyVisualSettings(s = getSettings()) {
       renderer.setColors({
         cKey: s.cKeyColor,
@@ -557,6 +611,10 @@ export function mountTrainer(root) {
         'rightHandColor','leftHandColor','labelMode'];
       if (visualKeys.some(k => k in patch)) {
         applyVisualSettings(s);
+        render();
+      }
+      if ('lookAheadSeconds' in patch || 'inputLatencyMs' in patch || 'beatsPerBar' in patch) {
+        applyPracticeSettings(s);
         render();
       }
       if ('keyboardRange' in patch) {
@@ -703,7 +761,7 @@ export function mountTrainer(root) {
         (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|OPTION)$/.test(t.tagName))) {
       return;
     }
-    if (e.code === 'Space') { e.preventDefault(); playback.isPlaying() ? playback.pause() : playback.play(); }
+    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.code === 'Escape') playback.stop();
   }
 
@@ -721,6 +779,7 @@ export function mountTrainer(root) {
       trackMuted: playback.handStates().map(h => !h.visible),
       score: playback.getScore(),
       loop: playback.loopState(),
+      metronome: metronome.isEnabled(),
       waitingForNote: playback.state.waitingForNote?.midi ?? null,
       waitingForChord: playback.state.waitingForChord
         ? playback.state.waitingForChord.filter(n => !n.hit).map(n => n.midi)
@@ -749,7 +808,7 @@ export function mountTrainer(root) {
 
   function handleTrainerCommand(cmd) {
     switch (cmd.action) {
-      case 'play':        if (playback.state.song) playback.play(); break;
+      case 'play':        if (playback.state.song && !playback.isPlaying()) togglePlay(); break;
       case 'pause':       playback.pause(); break;
       case 'stop':        playback.stop(); break;
       case 'seekPct':     playback.seekPct(cmd.args?.[0] ?? 0); break;
@@ -788,6 +847,13 @@ export function mountTrainer(root) {
         break;
       }
       case 'setLoopEnabled': playback.setLoopEnabled(!!cmd.args?.[0]); break;
+      case 'setMetronome': {
+        const on = !!cmd.args?.[0];
+        metronome.setEnabled(on);
+        metronome.resync(playback.state.song, playback.getCurrentTime());
+        $('[data-action="metronome"]').classList.toggle('active', on);
+        break;
+      }
       case 'clearLoop':      playback.clearLoop(); break;
       case 'loadSongById': loadSongById(cmd.args?.[0], cmd.args?.[1]); break;
       case 'touchNoteOn': {
@@ -822,6 +888,7 @@ export function mountTrainer(root) {
     savedHands.slice(0, 2).forEach((m, i) => { if (HAND_MODES[m]) playback.setHandMode(i, m); });
   }
   if (getSetting('waitMode')) playback.setWaitMode(true);
+  if (getSetting('metronome')) metronome.setEnabled(true);
 
   renderer.resize();
   buildDemos();

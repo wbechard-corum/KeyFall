@@ -124,6 +124,14 @@ export function createRenderer(canvas) {
     state.labelMode = mode;
   }
 
+  // How many seconds of upcoming music fill the note area. Strongly personal:
+  // a short window makes notes fall fast and read clearly, a long one gives
+  // more warning but compresses everything.
+  function setFallTime(seconds) {
+    const v = Number(seconds);
+    if (Number.isFinite(v) && v > 0) state.fallTimeSeconds = Math.max(1, Math.min(10, v));
+  }
+
   function drawGrid() {
     const pixelsPerSecond = state.noteAreaHeight / state.fallTimeSeconds;
     const beatDuration = 0.5;
@@ -398,6 +406,7 @@ export function createRenderer(canvas) {
     setKeyboardRange,
     setColors,
     setLabelMode,
+    setFallTime,
     getState: () => state,
   };
 }
