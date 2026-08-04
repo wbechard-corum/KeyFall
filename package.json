@@ -10,7 +10,8 @@
     "test": "node test/run.mjs",
     "dev:server": "DATA_DIR=./.data node server/mirror-server.js",
     "dev:all": "node scripts/dev-all.mjs",
-    "test:setup": "npm i --no-save playwright && npm --prefix server install"
+    "test:setup": "npm i --no-save playwright && npm --prefix server install",
+    "validate:profiles": "node scripts/validate-profiles.mjs"
   },
   "license": "MIT",
   "dependencies": {

@@ -181,6 +181,21 @@ function showVersion() {
   if (el) el.textContent = `v${__APP_VERSION__}`;
 }
 
+// Surface a broken contributed profile in the console at startup, rather than
+// letting it blow up whenever someone happens to select it.
+async function reportProfileProblems() {
+  try {
+    const { validateAllProfiles } = await import('./controller/profile-loader.js');
+    for (const result of validateAllProfiles()) {
+      if (result.valid) continue;
+      console.error(`Keyboard profile "${result.source}" is invalid and will fail to load:`,
+        result.errors);
+    }
+  } catch (e) {
+    console.warn('Profile validation could not run:', e);
+  }
+}
+
 function boot() {
   showVersion();
   const code = parseMirrorCode();
@@ -216,6 +231,7 @@ function boot() {
   requestAccess({ sysex: true }).then(() => autoSelect({ preferManufacturer: 'Roland' }));
 
   registerServiceWorker();
+  reportProfileProblems();
 }
 
 if (document.readyState === 'loading') {

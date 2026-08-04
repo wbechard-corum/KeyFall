@@ -1,14 +1,25 @@
 import { identityMatches } from '../midi/sysex.js';
 import { listProfiles, getProfile, getDefaultProfile } from '../profiles/index.js';
+import { validateProfile, assertValidProfile } from '../profiles/validate.js';
 
 export function loadProfile(id) {
   const profile = getProfile(id);
   if (!profile) throw new Error(`Unknown profile: ${id}`);
+  assertValidProfile(profile, id);
   return normalizeProfile(profile);
 }
 
 export function loadDefaultProfile() {
-  return normalizeProfile(getDefaultProfile());
+  const profile = getDefaultProfile();
+  assertValidProfile(profile, profile?.id ?? 'default');
+  return normalizeProfile(profile);
+}
+
+// Validate every registered profile. Called at boot so a broken contributed
+// profile is reported in the console rather than blowing up whenever someone
+// happens to select it.
+export function validateAllProfiles() {
+  return listProfiles().map(p => validateProfile(p, { source: p?.id ?? 'unknown' }));
 }
 
 export function availableProfiles() {
@@ -19,6 +30,13 @@ export function matchProfileFromIdentity(reply) {
   if (!reply) return null;
   for (const profile of listProfiles()) {
     if (profile.identityResponse && identityMatches(reply, profile.identityResponse)) {
+      // An invalid profile shouldn't be force-selected by auto-detect; log
+      // and keep looking rather than throwing inside a MIDI callback.
+      const check = validateProfile(profile, { source: profile.id });
+      if (!check.valid) {
+        console.warn(`Auto-detected profile "${profile.id}" is invalid; ignoring.`, check.errors);
+        continue;
+      }
       return normalizeProfile(profile);
     }
   }
