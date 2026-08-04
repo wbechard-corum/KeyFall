@@ -1,4 +1,7 @@
-export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChange }) {
+import { resolveHandMode, nextHandMode } from '../shared/constants.js';
+import { createScorer } from './scoring.js';
+
+export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChange, onScoreChange }) {
   // Notes that start within CHORD_EPS seconds of each other count
   // as one chord and must all be played before time advances.
   const CHORD_EPS = 0.03;
@@ -19,7 +22,8 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     waitMode: false,
     waitingForNote: null,         // first unhit note in the active chord (legacy)
     waitingForChord: null,        // [note, …] — every note that must be pressed
-    trackMuted: [false, false],
+    // Per hand: 0 = right, 1 = left. See HAND_MODES in shared/constants.js.
+    handModes: ['both', 'both'],
     lastFrameTime: 0,
     animFrameId: null,
     // Cursors into song.notes (sorted by startTime). They turn what used to
@@ -27,6 +31,23 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     emitIndex: 0,                 // next note not yet handed to audio
     scanIndex: 0,                 // first note still near enough to matter
   };
+
+  const scorer = createScorer();
+
+  const handOf = (note) => (note.track === 1 ? 1 : 0);
+  const modeOf = (note) => resolveHandMode(state.handModes[handOf(note)]);
+  const isVisible = (note) => modeOf(note).visible;
+  const isAudible = (note) => modeOf(note).audible;
+  const isScored  = (note) => modeOf(note).scored;
+
+  // Renderers and the mirror protocol want a plain per-hand view.
+  function handStates() {
+    return state.handModes.map(m => ({ mode: m, ...resolveHandMode(m) }));
+  }
+
+  function emitScore() {
+    onScoreChange?.(scorer.snapshot());
+  }
 
   // Index of the first note with startTime >= t.
   function lowerBound(notes, t) {
@@ -65,7 +86,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     state.song = song;
     state.currentTime = 0;
     clearWait();
-    if (song) song.notes.forEach(n => { n.played = false; n.hit = false; });
+    resetNoteState(song);
     resetCursors();
   }
 
@@ -76,13 +97,28 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     if (!state.waitMode) clearWait();
   }
 
-  function toggleTrackMuted(idx) {
-    state.trackMuted[idx] = !state.trackMuted[idx];
-    return state.trackMuted[idx];
+  function resetNoteState(song) {
+    if (!song) return;
+    song.notes.forEach(n => { n.played = false; });
+    scorer.resetSong(song);
+    scorer.reset();
+    emitScore();
   }
 
-  function isTrackMuted(idx) {
-    return !!state.trackMuted[idx];
+  function setHandMode(idx, mode) {
+    if (idx !== 0 && idx !== 1) return state.handModes[0];
+    state.handModes[idx] = resolveHandMode(mode) === undefined ? 'both' : mode;
+    return state.handModes[idx];
+  }
+
+  function cycleHandMode(idx) {
+    if (idx !== 0 && idx !== 1) return 'both';
+    state.handModes[idx] = nextHandMode(state.handModes[idx]);
+    return state.handModes[idx];
+  }
+
+  function getHandMode(idx) {
+    return state.handModes[idx] ?? 'both';
   }
 
   function play() {
@@ -104,7 +140,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
   function stop() {
     pause();
     state.currentTime = 0;
-    if (state.song) state.song.notes.forEach(n => { n.played = false; n.hit = false; });
+    resetNoteState(state.song);
     clearWait();
     resetCursors();
     onTick?.({ currentTime: 0, song: state.song });
@@ -113,7 +149,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
   function seek(seconds) {
     if (!state.song) return;
     state.currentTime = Math.max(0, Math.min(state.song.duration, seconds));
-    state.song.notes.forEach(n => { n.played = false; n.hit = false; });
+    resetNoteState(state.song);
     clearWait();
     resetCursors();
     onTick?.({ currentTime: state.currentTime, song: state.song });
@@ -142,6 +178,14 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     emitDueNotes();
     advanceScanCursor();
 
+    // Anything whose window has closed unplayed counts as a miss. Wait mode
+    // stalls the playhead at each chord, so nothing can time out there.
+    if (!state.waitMode) {
+      if (scorer.sweepMissed(state.song, state.currentTime, state.scanIndex, isScored) > 0) {
+        emitScore();
+      }
+    }
+
     if (state.waitMode) checkWait();
 
     if (state.currentTime >= state.song.duration + 1) {
@@ -169,7 +213,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
       const note = notes[state.emitIndex++];
       if (note.played) continue;
       note.played = true;
-      if (!state.trackMuted[note.track || 0]) {
+      if (isAudible(note)) {
         notePlayListeners.forEach(fn => fn(note));
       }
     }
@@ -185,7 +229,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
       const note = notes[i];
       if (note.startTime > seedNote.startTime + CHORD_EPS) break;
       if (note.hit) continue;
-      if (state.trackMuted[note.track || 0]) continue;
+      if (!isScored(note)) continue;
       if (note.startTime < seedNote.startTime - CHORD_EPS) continue;
       chord.push(note);
     }
@@ -201,7 +245,7 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     for (let i = state.scanIndex; i < notes.length; i++) {
       const note = notes[i];
       if (note.startTime > state.currentTime + WAIT_WINDOW) break;
-      if (note.hit || state.trackMuted[note.track || 0]) continue;
+      if (note.hit || !isScored(note)) continue;
       if (note.startTime < state.currentTime - WAIT_WINDOW) continue;
       seed = note;
       break;
@@ -232,12 +276,25 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
   }
 
   function reportKeyPress(midiNote) {
-    if (!state.waitMode || !state.song) return;
+    if (!state.song) return;
+
+    // Free play: no chord stalling, just grade the press. This path did not
+    // exist before — with wait mode off nothing was ever scored.
+    if (!state.waitMode) {
+      scorer.judgePress(state.song, midiNote, state.currentTime, state.scanIndex, isScored);
+      emitScore();
+      return;
+    }
+
     // If a chord is already active, see if this press fits.
     if (state.waitingForChord) {
       const match = state.waitingForChord.find(n => n.midi === midiNote && !n.hit);
       if (match) {
-        match.hit = true;
+        // Restrict the search to this exact note so a same-pitch note
+        // elsewhere in the window can't be claimed instead.
+        scorer.judgePress(state.song, midiNote, match.startTime, state.scanIndex,
+                          (n) => n === match, { assisted: true });
+        emitScore();
         advanceIfChordComplete();
         return;
       }
@@ -257,13 +314,15 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     for (let i = state.scanIndex; i < notes.length; i++) {
       const note = notes[i];
       if (note.startTime > state.currentTime + lookAhead) break;
-      if (note.hit || state.trackMuted[note.track || 0]) continue;
+      if (note.hit || !isScored(note)) continue;
       if (note.startTime < state.currentTime - lookBack) continue;
       if (note.midi === midiNote) { matchNote = note; break; }
     }
     if (!matchNote) return;
     const chord = buildChordAround(matchNote);
-    matchNote.hit = true;
+    scorer.judgePress(state.song, midiNote, matchNote.startTime, state.scanIndex,
+                      (n) => n === matchNote, { assisted: true });
+    emitScore();
     if (chord.every(n => n.hit)) {
       if (state.currentTime < matchNote.startTime) state.currentTime = matchNote.startTime;
       clearWait();
@@ -285,8 +344,10 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     setSong,
     setSpeed,
     setWaitMode,
-    toggleTrackMuted,
-    isTrackMuted,
+    setHandMode,
+    cycleHandMode,
+    getHandMode,
+    handStates,
     play,
     pause,
     stop,
@@ -298,5 +359,8 @@ export function createPlayback({ onTick, onEnded, onPlayStateChange, onWaitChang
     getCurrentTime: () => state.currentTime,
     getWaitingForNote: () => state.waitingForNote,
     getWaitingForChord: () => state.waitingForChord,
+    getScore: () => scorer.snapshot(),
+    isNoteVisible: isVisible,
+    isNoteScored: isScored,
   };
 }

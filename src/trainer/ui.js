@@ -5,6 +5,7 @@ import { parseMIDI } from '../midi/parser.js';
 import { onNote as onMIDINote } from '../midi/input.js';
 import { sendNoteOn, sendNoteOff } from '../midi/output.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
+import { HAND_MODES } from '../shared/constants.js';
 import { getSetting, getSettings, updateSettings, onSettingsChange } from '../shared/settings.js';
 import { setSection, setCommandHandler } from '../shared/app-mirror.js';
 import { getSong } from './library.js';
@@ -51,11 +52,19 @@ const TEMPLATE = `
 
       <span class="spacer"></span>
 
-      <div class="track-toggle" data-action="track-r">
+      <button class="hand-toggle" data-action="hand-r" data-hand="0">
         <span class="dot" style="background:var(--right-hand)"></span>R
-      </div>
-      <div class="track-toggle" data-action="track-l">
+        <span class="hand-mode" data-role="hand-r-mode">BOTH</span>
+      </button>
+      <button class="hand-toggle" data-action="hand-l" data-hand="1">
         <span class="dot" style="background:var(--left-hand)"></span>L
+        <span class="hand-mode" data-role="hand-l-mode">BOTH</span>
+      </button>
+
+      <div class="score-hud" data-role="score-hud">
+        <span class="score-acc" data-role="score-acc">—</span>
+        <span class="score-detail" data-role="score-detail">0/0</span>
+        <span class="score-combo hidden" data-role="score-combo"></span>
       </div>
 
       <div class="ctrl-group view-toggle" data-role="view-toggle">
@@ -77,6 +86,21 @@ const TEMPLATE = `
         <div class="sheet-status" data-role="sheet-status"></div>
         <div class="sheet-host" data-role="sheet-host"></div>
       </div>
+      <div class="score-summary hidden" data-role="score-summary">
+        <div class="score-summary-card">
+          <div class="score-summary-title">Run complete</div>
+          <div class="score-summary-acc" data-role="summary-acc">—</div>
+          <div class="score-summary-note hidden" data-role="summary-assisted">
+            Wait mode was on — timing wasn't graded.
+          </div>
+          <div class="score-summary-grid" data-role="summary-grid"></div>
+          <div class="score-summary-actions">
+            <button class="drop-btn primary" data-action="summary-again">Play again</button>
+            <button class="drop-btn" data-action="summary-close">Close</button>
+          </div>
+        </div>
+      </div>
+
       <div class="drop-overlay" data-role="drop-overlay">
         <div class="drop-icon">♪</div>
         <div class="drop-title">Load a song</div>
@@ -114,12 +138,13 @@ export function mountTrainer(root) {
 
   const playback = createPlayback({
     onTick: () => render(),
-    onEnded: () => setPlayButtonState(false),
+    onEnded: () => { setPlayButtonState(false); showSummary(); },
     onPlayStateChange: (playing) => {
       setPlayButtonState(playing);
       if (!playing) panicAllOutNotes();
     },
     onWaitChange: () => render(),
+    onScoreChange: (score) => renderScore(score),
   });
 
   playback.onNotePlay((note) => {
@@ -169,12 +194,90 @@ export function mountTrainer(root) {
       currentTime: playback.state.currentTime,
       pressedKeys,
       keyVelocity: pressedKeys,
-      trackMuted: playback.state.trackMuted,
+      hands: playback.handStates(),
       isPlaying: playback.isPlaying(),
     });
     if (viewMode === 'sheet') sheet?.moveCursor(playback.state.currentTime);
     updateProgress();
     publishTrainerState();
+  }
+
+  function renderScore(score = playback.getScore()) {
+    const acc = $('[data-role="score-acc"]');
+    const detail = $('[data-role="score-detail"]');
+    const combo = $('[data-role="score-combo"]');
+
+    if (score.accuracy === null) {
+      acc.textContent = '—';
+      acc.className = 'score-acc';
+      detail.textContent = `${score.extras > 0 ? `${score.extras} extra` : '0/0'}`;
+      combo.classList.add('hidden');
+      return;
+    }
+    const pct = Math.round(score.accuracy * 100);
+    acc.textContent = `${pct}%`;
+    acc.className = 'score-acc ' + (pct >= 95 ? 'great' : pct >= 80 ? 'good' : 'poor');
+    detail.textContent = `${score.hits}/${score.total}`;
+    if (score.combo >= 5) {
+      combo.textContent = `×${score.combo}`;
+      combo.classList.remove('hidden');
+    } else {
+      combo.classList.add('hidden');
+    }
+  }
+
+  function showSummary() {
+    const score = playback.getScore();
+    // Nothing to report if the player never engaged (e.g. they just watched
+    // a playthrough with both hands on APP).
+    if (score.total === 0) return;
+    const pct = Math.round((score.accuracy ?? 0) * 100);
+    $('[data-role="summary-acc"]').textContent = `${pct}%`;
+    $('[data-role="summary-assisted"]').classList.toggle('hidden', !score.waitAssisted);
+
+    const grid = $('[data-role="summary-grid"]');
+    grid.innerHTML = '';
+    const rows = [
+      ['Perfect', score.byRating.perfect],
+      ['Good', score.byRating.good],
+      ['Early', score.byRating.early],
+      ['Late', score.byRating.late],
+      ['Missed', score.byRating.miss],
+      ['Best streak', score.maxCombo],
+    ];
+    if (!score.waitAssisted && score.hits > 0) {
+      rows.push(['Avg timing', `${Math.round(score.averageError * 1000)} ms`]);
+    }
+    if (score.extras > 0) rows.push(['Extra notes', score.extras]);
+    for (const [label, value] of rows) {
+      const cell = document.createElement('div');
+      cell.className = 'score-summary-cell';
+      const k = document.createElement('span');
+      k.className = 'k';
+      k.textContent = label;
+      const v = document.createElement('span');
+      v.className = 'v';
+      v.textContent = String(value);
+      cell.append(k, v);
+      grid.appendChild(cell);
+    }
+    $('[data-role="score-summary"]').classList.remove('hidden');
+  }
+
+  function hideSummary() {
+    $('[data-role="score-summary"]').classList.add('hidden');
+  }
+
+  function renderHandButtons() {
+    for (const [idx, role] of [[0, 'hand-r-mode'], [1, 'hand-l-mode']]) {
+      const mode = playback.getHandMode(idx);
+      const info = HAND_MODES[mode];
+      const el = $(`[data-role="${role}"]`);
+      el.textContent = info.label;
+      const btn = el.closest('.hand-toggle');
+      btn.dataset.mode = mode;
+      btn.title = `${idx === 0 ? 'Right' : 'Left'} hand — ${info.hint}`;
+    }
   }
 
   function setPlayButtonState(playing) {
@@ -196,6 +299,7 @@ export function mountTrainer(root) {
     const info = $('[data-role="song-info"]');
     info.textContent = `${song.name} · ${song.notes.length} notes · ${formatTime(song.duration)}`;
     $('[data-role="drop-overlay"]').classList.add('hidden');
+    hideSummary();
     resumeAudio();
     currentSongMeta = {
       id: meta.id ?? null,
@@ -350,12 +454,14 @@ export function mountTrainer(root) {
     $('[data-action="wait"]').addEventListener('click', (e) => {
       const enabled = !e.currentTarget.classList.contains('active');
       playback.setWaitMode(enabled);
+      updateSettings({ waitMode: enabled });
       e.currentTarget.classList.toggle('active', enabled);
     });
     $('[data-action="midi-out"]').addEventListener('click', (e) => {
       setMidiOutEnabled(!e.currentTarget.classList.contains('active'));
     });
     if (midiOutEnabled) $('[data-action="midi-out"]').classList.add('active');
+    if (playback.state.waitMode) $('[data-action="wait"]').classList.add('active');
 
     $('[data-action="view-notes"]').addEventListener('click', () => setView('notes'));
     $('[data-action="view-sheet"]').addEventListener('click', () => setView('sheet'));
@@ -398,15 +504,20 @@ export function mountTrainer(root) {
         render();
       }
     });
-    $('[data-action="track-r"]').addEventListener('click', (e) => {
-      const muted = playback.toggleTrackMuted(0);
-      e.currentTarget.classList.toggle('muted', muted);
-      render();
-    });
-    $('[data-action="track-l"]').addEventListener('click', (e) => {
-      const muted = playback.toggleTrackMuted(1);
-      e.currentTarget.classList.toggle('muted', muted);
-      render();
+    for (const [sel, idx] of [['[data-action="hand-r"]', 0], ['[data-action="hand-l"]', 1]]) {
+      $(sel).addEventListener('click', () => {
+        playback.cycleHandMode(idx);
+        updateSettings({ handModes: [playback.getHandMode(0), playback.getHandMode(1)] });
+        renderHandButtons();
+        render();
+      });
+    }
+
+    $('[data-action="summary-close"]').addEventListener('click', hideSummary);
+    $('[data-action="summary-again"]').addEventListener('click', () => {
+      hideSummary();
+      playback.stop();
+      playback.play();
     });
     $$('[data-action="open"]').forEach(el => el.addEventListener('click', openFile));
     $('[data-role="file-input"]').addEventListener('change', (e) => loadFile(e.target.files[0]));
@@ -527,7 +638,10 @@ export function mountTrainer(root) {
       currentTime: playback.state.currentTime,
       speed: playback.state.playSpeed,
       waitMode: playback.state.waitMode,
-      trackMuted: [...playback.state.trackMuted],
+      handModes: [...playback.state.handModes],
+      // Derived so the mirror client can keep showing which hands are hidden.
+      trackMuted: playback.handStates().map(h => !h.visible),
+      score: playback.getScore(),
       waitingForNote: playback.state.waitingForNote?.midi ?? null,
       waitingForChord: playback.state.waitingForChord
         ? playback.state.waitingForChord.filter(n => !n.hit).map(n => n.midi)
@@ -568,11 +682,21 @@ export function mountTrainer(root) {
         break;
       }
       case 'toggleTrack': {
+        // Legacy remote command: cycle the hand instead of toggling a mute.
         const idx = cmd.args?.[0];
         if (idx === 0 || idx === 1) {
-          const muted = playback.toggleTrackMuted(idx);
-          const sel = idx === 0 ? '[data-action="track-r"]' : '[data-action="track-l"]';
-          $(sel).classList.toggle('muted', muted);
+          playback.cycleHandMode(idx);
+          renderHandButtons();
+          render();
+        }
+        break;
+      }
+      case 'setHandMode': {
+        const idx = cmd.args?.[0];
+        const mode = cmd.args?.[1];
+        if ((idx === 0 || idx === 1) && HAND_MODES[mode]) {
+          playback.setHandMode(idx, mode);
+          renderHandButtons();
           render();
         }
         break;
@@ -605,9 +729,18 @@ export function mountTrainer(root) {
 
   setCommandHandler('trainer', handleTrainerCommand);
 
+  // Restore persisted practice state before the first paint.
+  const savedHands = getSetting('handModes');
+  if (Array.isArray(savedHands)) {
+    savedHands.slice(0, 2).forEach((m, i) => { if (HAND_MODES[m]) playback.setHandMode(i, m); });
+  }
+  if (getSetting('waitMode')) playback.setWaitMode(true);
+
   renderer.resize();
   buildDemos();
   setupControls();
+  renderHandButtons();
+  renderScore();
   setupDragDrop();
   setupTouchPiano();
   render();

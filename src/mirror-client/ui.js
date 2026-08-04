@@ -5,6 +5,7 @@ import { parseMIDI } from '../midi/parser.js';
 import { DEMOS } from '../trainer/demos.js';
 import { getSong } from '../trainer/library.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
+import { HAND_MODES } from '../shared/constants.js';
 import { getSetting, updateSettings } from '../shared/settings.js';
 import { renameSong, setSongStarred } from '../trainer/library.js';
 import { createSheet, retryNotation } from '../trainer/sheet.js';
@@ -110,8 +111,9 @@ const TEMPLATE = `
           <div class="mc-trainer-row">
             <button class="mc-trainer-toggle" data-action="wait">WAIT</button>
             <button class="mc-trainer-toggle" data-action="midi-out">MIDI OUT</button>
-            <button class="mc-trainer-toggle" data-action="track-r">R</button>
-            <button class="mc-trainer-toggle" data-action="track-l">L</button>
+            <button class="mc-trainer-toggle hand" data-action="track-r">R</button>
+            <button class="mc-trainer-toggle hand" data-action="track-l">L</button>
+            <span class="mc-score hidden" data-role="client-score"></span>
           </div>
           <div class="mc-trainer-row">
             <label>Keys</label>
@@ -851,6 +853,41 @@ export function mountMirrorClient(root, code) {
     return localClock.hostTime + elapsed * localClock.speed;
   }
 
+  // Hosts >=0.7 publish handModes; older ones only had trackMuted.
+  function handModesFrom(t) {
+    if (Array.isArray(t?.handModes) && t.handModes.length >= 2) {
+      return t.handModes.map(m => (HAND_MODES[m] ? m : 'both'));
+    }
+    const muted = t?.trackMuted || [false, false];
+    return [muted[0] ? 'off' : 'both', muted[1] ? 'off' : 'both'];
+  }
+
+  function renderHandButton(sel, mode) {
+    const btn = $(sel);
+    if (!btn) return;
+    const info = HAND_MODES[mode] || HAND_MODES.both;
+    btn.dataset.mode = mode;
+    btn.classList.toggle('muted', mode === 'off');
+    let tag = btn.querySelector('.hand-mode');
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'hand-mode';
+      btn.appendChild(tag);
+    }
+    tag.textContent = info.label;
+    btn.title = info.hint;
+  }
+
+  function renderScoreHud(score) {
+    const host = $('[data-role="client-score"]');
+    if (!host) return;
+    if (!score || score.total === 0) { host.classList.add('hidden'); return; }
+    host.classList.remove('hidden');
+    const pct = Math.round((score.accuracy ?? 0) * 100);
+    host.textContent = `${pct}%  ${score.hits}/${score.total}` +
+      (score.combo >= 5 ? `  ×${score.combo}` : '');
+  }
+
   function renderClientCanvas() {
     if (!trainerRenderer) return;
     if (viewMode === 'sheet' && sheet?.isReady()) {
@@ -871,7 +908,7 @@ export function mountMirrorClient(root, code) {
         currentTime: 0,
         pressedKeys: new Set(),
         keyVelocity: new Map(),
-        trackMuted: [false, false],
+        hands: ['both', 'both'],
         isPlaying: false,
       });
       return;
@@ -882,7 +919,7 @@ export function mountMirrorClient(root, code) {
       currentTime: time,
       pressedKeys: keyMap,
       keyVelocity: keyMap,
-      trackMuted: t.trackMuted || [false, false],
+      hands: handModesFrom(t),
       isPlaying: t.playing,
     });
   }
@@ -990,8 +1027,10 @@ export function mountMirrorClient(root, code) {
 
     $('[data-action="wait"]').classList.toggle('active', !!t.waitMode);
     $('[data-action="midi-out"]').classList.toggle('active', !!t.midiOutEnabled);
-    $('[data-action="track-r"]').classList.toggle('muted', !!t.trackMuted?.[0]);
-    $('[data-action="track-l"]').classList.toggle('muted', !!t.trackMuted?.[1]);
+    renderHandButton('[data-action="track-r"]', handModesFrom(t)[0]);
+    renderHandButton('[data-action="track-l"]', handModesFrom(t)[1]);
+
+    renderScoreHud(t.score);
 
     renderTrainerLibrary();
   }

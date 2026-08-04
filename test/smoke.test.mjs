@@ -95,6 +95,40 @@ try {
     parseFloat(await page.locator('[data-role="progress-fill"]').evaluate(el => el.style.width)) === 0);
   check('no console errors during playback', errors.length === 0, errors.join(' | '));
 
+  console.log('trainer: hand modes + score HUD');
+  errors.length = 0;
+  const handBtn = page.locator('[data-action="hand-r"]');
+  const modeOf = () => handBtn.getAttribute('data-mode');
+  check('right hand starts on BOTH', await modeOf() === 'both', await modeOf());
+  await handBtn.click(); await sleep(80);
+  check('cycles to YOU', await modeOf() === 'you', await modeOf());
+  await handBtn.click(); await sleep(80);
+  check('cycles to APP', await modeOf() === 'app', await modeOf());
+  await handBtn.click(); await sleep(80);
+  check('cycles to OFF', await modeOf() === 'off', await modeOf());
+  await handBtn.click(); await sleep(80);
+  check('wraps back to BOTH', await modeOf() === 'both', await modeOf());
+
+  // The score HUD should start empty and stay empty until something is judged.
+  check('score starts blank',
+    (await page.locator('[data-role="score-acc"]').textContent())?.trim() === '—');
+
+  // Play a demo far enough that unplayed notes get swept as misses, which is
+  // only possible now that scoring runs with wait mode off.
+  await page.locator('[data-action="stop"]').click();
+  await page.locator('[data-action="play"]').click();
+  await sleep(2500);
+  const accText = (await page.locator('[data-role="score-acc"]').textContent())?.trim();
+  check('accuracy appears once notes are judged', /%$/.test(accText || ''), accText);
+  const detail = (await page.locator('[data-role="score-detail"]').textContent())?.trim();
+  check('hit/total counter populated', /^\d+\/\d+$/.test(detail || ''), detail);
+  await page.locator('[data-action="play"]').click();   // pause
+  await page.locator('[data-action="stop"]').click();
+  await sleep(150);
+  check('stop clears the score',
+    (await page.locator('[data-role="score-acc"]').textContent())?.trim() === '—');
+  check('no console errors from scoring', errors.length === 0, errors.join(' | '));
+
   console.log('trainer: canvas piano interaction');
   errors.length = 0;
   const box = await page.locator('.canvas-wrap canvas').boundingBox();

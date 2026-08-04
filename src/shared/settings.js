@@ -9,6 +9,10 @@ const DEFAULTS = {
   trainerMidiOut: false,
   keyboardRange: 88,
 
+  // Practice state, remembered between sessions.
+  waitMode: false,
+  handModes: ['both', 'both'],   // [right, left] — see HAND_MODES
+
   // Colors are configurable in the top-level Settings tab. Null for
   // cKeyColor means Cs look like any other white.
   cKeyColor: '#4dd6c3',

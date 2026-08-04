@@ -436,6 +436,131 @@ select option {
 .track-toggle .dot { width: 8px; height: 8px; border-radius: 50%; }
 .track-toggle.muted { opacity: 0.35; }
 
+/* Per-hand mode button: BOTH / YOU / APP / OFF. */
+.hand-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  user-select: none;
+  transition: all 0.12s;
+}
+.hand-toggle .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.hand-toggle .hand-mode {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-dim);
+}
+.hand-toggle[data-mode="you"]  { border-color: rgba(77, 214, 195, 0.5); }
+.hand-toggle[data-mode="you"]  .hand-mode { background: rgba(77, 214, 195, 0.18); color: var(--accent); }
+.hand-toggle[data-mode="app"]  { border-color: rgba(226, 192, 90, 0.5); }
+.hand-toggle[data-mode="app"]  .hand-mode { background: rgba(226, 192, 90, 0.18); color: #e2c05a; }
+.hand-toggle[data-mode="off"]  { opacity: 0.4; }
+
+/* Live accuracy readout in the transport bar. */
+.score-hud {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 0 4px;
+}
+.score-acc { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.score-acc.great { color: #7ae58a; }
+.score-acc.good  { color: var(--accent); }
+.score-acc.poor  { color: #ff6b7a; }
+.score-detail { font-size: 10px; color: var(--text-dim); }
+.score-combo {
+  font-size: 10px;
+  font-weight: 600;
+  color: #e2c05a;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(226, 192, 90, 0.15);
+}
+
+/* End-of-run summary. */
+.score-summary {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 12, 15, 0.82);
+  backdrop-filter: blur(4px);
+  z-index: 6;
+}
+.score-summary-card {
+  width: min(420px, 88%);
+  padding: 26px 28px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-align: center;
+}
+.score-summary-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.score-summary-acc {
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 6px 0 2px;
+  color: var(--accent);
+}
+.score-summary-note {
+  font-size: 11px;
+  color: #e2c05a;
+  margin-bottom: 10px;
+}
+.score-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 14px;
+  margin: 16px 0 20px;
+  text-align: left;
+}
+.score-summary-cell {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+.score-summary-cell .k { color: var(--text-dim); }
+.score-summary-cell .v { color: var(--text); font-weight: 600; }
+.score-summary-actions { display: flex; gap: 8px; justify-content: center; }
+
+/* Remote: hand-mode tag + score readout. */
+.mc-trainer-toggle.hand .hand-mode {
+  margin-left: 5px;
+  font-size: 9px;
+  opacity: 0.75;
+}
+.mc-score {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  align-self: center;
+  margin-left: auto;
+}
+
 .progress-bar {
   height: 3px;
   background: var(--surface-2);

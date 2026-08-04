@@ -90,14 +90,15 @@ console.log('active-key highlighting');
 
   let mismatches = 0;
   for (let t = 0; t <= 2.2; t += 0.05) {
-    for (const trackMuted of [[false, false], [false, true], [true, false]]) {
+    for (const hands of [['both','both'], ['both','off'], ['off','both']]) {
       fills.length = 0;
       renderer.render({
         song, currentTime: t, pressedKeys: new Map(), keyVelocity: new Map(),
-        trackMuted, isPlaying: true,
+        hands, isPlaying: true,
       });
       const got = activeKeysFromFills(layout, pianoTop);
-      const want = referenceActive(song, t, trackMuted);
+      const muted = hands.map(h => h === 'off');
+      const want = referenceActive(song, t, muted);
       // Only compare notes that are actually on the 88-key layout.
       const wantOnKeyboard = new Map(
         [...want].filter(([midi]) => layout.allKeyPositions[midi]));
@@ -105,7 +106,7 @@ console.log('active-key highlighting');
       const sameEntries = [...wantOnKeyboard].every(([m, tr]) => got.get(m) === tr);
       if (!sameSize || !sameEntries) {
         if (mismatches < 3) {
-          console.log(`    t=${t.toFixed(2)} muted=${trackMuted}`,
+          console.log(`    t=${t.toFixed(2)} hands=${hands}`,
             'got', [...got], 'want', [...wantOnKeyboard]);
         }
         mismatches++;
@@ -126,7 +127,7 @@ console.log('render performance');
   const song = makeSong(specs);
   const args = {
     song, pressedKeys: new Map(), keyVelocity: new Map(),
-    trackMuted: [false, false], isPlaying: true,
+    hands: ['both', 'both'], isPlaying: true,
   };
   renderer.render({ ...args, currentTime: 0 });   // warm the maxDuration cache
   const t0 = Date.now();

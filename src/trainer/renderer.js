@@ -1,5 +1,27 @@
-import { COLORS, NOTE_NAMES } from '../shared/constants.js';
+import { COLORS, NOTE_NAMES, RATING_COLORS, resolveHandMode } from '../shared/constants.js';
 import { computeKeyLayout, getNoteX, getNoteWidth } from '../shared/piano-keyboard.js';
+
+const BOTH_HANDS = [resolveHandMode('both'), resolveHandMode('both')];
+
+// Callers may pass resolved hand objects, mode-name strings, or nothing.
+function normaliseHands(hands) {
+  if (!Array.isArray(hands) || hands.length < 2) return BOTH_HANDS;
+  return hands.map(h => (typeof h === 'string' ? resolveHandMode(h) : (h || BOTH_HANDS[0])));
+}
+
+// Colour a note that the playhead has already passed. Judged notes get their
+// rating colour; unjudged ones (an APP hand, or scoring not applicable) stay
+// neutral so the player isn't told they missed something they never owed.
+function pastNoteFill(note) {
+  if (!note.judged) return 'rgba(255,255,255,0.08)';
+  const hex = RATING_COLORS[note.rating] || RATING_COLORS.miss;
+  return hexToRgba(hex, note.rating === 'miss' ? 0.22 : 0.32);
+}
+
+function hexToRgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
 
 // Safari <15.4 and older browsers lack CanvasRenderingContext2D.roundRect.
 function ensureRoundRect(ctx) {
@@ -132,7 +154,7 @@ export function createRenderer(canvas) {
     ctx.fillRect(0, y - 8, state.W, 10);
   }
 
-  function drawNotes(song, currentTime, trackMuted, isPlaying) {
+  function drawNotes(song, currentTime, hands, isPlaying) {
     if (!song || song.notes.length === 0) return;
     const pixelsPerSecond = state.noteAreaHeight / state.fallTimeSeconds;
     const viewStart = currentTime - 0.1;
@@ -146,7 +168,7 @@ export function createRenderer(canvas) {
       if (note.startTime > viewEnd) break;
       if (note.endTime < viewStart) continue;
       const trackIdx = note.track || 0;
-      if (trackMuted[trackIdx]) continue;
+      if (!hands[trackIdx].visible) continue;
 
       const x = getNoteX(state.layout, note.midi);
       if (x === null) continue;
@@ -178,12 +200,23 @@ export function createRenderer(canvas) {
         ctx.restore();
       }
 
-      ctx.fillStyle = isPast ? (note.hit ? 'rgba(122,229,138,0.3)' : 'rgba(255,255,255,0.08)') : color;
-      ctx.globalAlpha = isPast ? 0.4 : (isActive ? 1 : 0.92);
+      ctx.fillStyle = isPast ? pastNoteFill(note) : color;
+      ctx.globalAlpha = isPast ? 0.55 : (isActive ? 1 : 0.92);
 
       ctx.beginPath();
       ctx.roundRect(noteX, yTop, w, noteH, radius);
       ctx.fill();
+
+      // A judged note keeps a thin rating-coloured edge so hits and misses
+      // stay legible after the fill has faded out.
+      if (isPast && note.judged) {
+        ctx.strokeStyle = RATING_COLORS[note.rating] || RATING_COLORS.miss;
+        ctx.globalAlpha = note.rating === 'miss' ? 0.55 : 0.7;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(noteX, yTop, w, noteH, radius);
+        ctx.stroke();
+      }
 
       if (!isPast && noteH > 8) {
         ctx.fillStyle = 'rgba(255,255,255,0.15)';
@@ -227,7 +260,7 @@ export function createRenderer(canvas) {
   // Built once per frame. Previously drawPiano called two whole-song scans
   // per key, so a 5,000-note song did 1.7M comparisons every frame just to
   // decide which keys to light up.
-  function computeActiveNotes(song, currentTime, trackMuted) {
+  function computeActiveNotes(song, currentTime, hands) {
     const active = new Map();
     if (!song || song.notes.length === 0) return active;
     const notes = song.notes;
@@ -235,13 +268,13 @@ export function createRenderer(canvas) {
       const note = notes[i];
       if (note.startTime > currentTime) break;
       if (note.endTime < currentTime) continue;
-      if (trackMuted[note.track || 0]) continue;
+      if (!hands[note.track === 1 ? 1 : 0].visible) continue;
       if (!active.has(note.midi)) active.set(note.midi, note.track || 0);
     }
     return active;
   }
 
-  function drawPiano(song, currentTime, pressedKeys, trackMuted, keyVelocity, activeNotes) {
+  function drawPiano(song, currentTime, pressedKeys, keyVelocity, activeNotes) {
     const y = state.H - state.pianoHeight;
     ctx.fillStyle = '#0a0c0f';
     ctx.fillRect(0, y, state.W, state.pianoHeight);
@@ -343,19 +376,20 @@ export function createRenderer(canvas) {
     }
   }
 
-  function render({ song, currentTime, pressedKeys, trackMuted, isPlaying, keyVelocity }) {
+  function render({ song, currentTime, pressedKeys, hands, isPlaying, keyVelocity }) {
+    const handState = normaliseHands(hands);
     ctx.clearRect(0, 0, state.W, state.H);
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, state.W, state.H);
 
-    const activeNotes = computeActiveNotes(song, currentTime, trackMuted);
+    const activeNotes = computeActiveNotes(song, currentTime, handState);
 
     if (song) {
       drawGrid();
-      drawNotes(song, currentTime, trackMuted, isPlaying);
+      drawNotes(song, currentTime, handState, isPlaying);
       drawHitLine();
     }
-    drawPiano(song, currentTime, pressedKeys, trackMuted, keyVelocity, activeNotes);
+    drawPiano(song, currentTime, pressedKeys, keyVelocity, activeNotes);
   }
 
   return {

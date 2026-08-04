@@ -83,7 +83,7 @@ console.log('muted track');
   const pb = createPlayback({});
   pb.onNotePlay(n => heard.push(n.midi));
   pb.setSong(song([[60, 0.05, 0.2, 0], [40, 0.05, 0.2, 1], [62, 0.15, 0.2, 0]]));
-  pb.toggleTrackMuted(1);
+  pb.setHandMode(1, 'off');
   pb.play();
   for (let i = 0; i < 20; i++) stepFrame(16);
   check('left-hand note suppressed', !heard.includes(40), heard.join(','));
