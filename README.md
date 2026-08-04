@@ -2,8 +2,9 @@
 
 Open-source piano trainer and universal MIDI keyboard controller. Two tools in one, unified by a shared WebMIDI layer.
 
-- **Trainer** — Falling-notes practice mode with MIDI file playback, on-screen piano, wait mode, and real-time feedback from a connected MIDI keyboard.
+- **Trainer** — Falling-notes practice with accuracy scoring, per-hand isolation, A/B section repeat, wait mode, a metronome and count-in, and sheet music alongside.
 - **Controller** — Browse patches, tweak effects, and send SysEx from a phone or tablet — driven by JSON keyboard profiles so any hardware can be supported without code changes.
+- **Mirror** — Pair a second device with a 6-digit code and drive the whole thing from an iPad on the music stand.
 
 See `CLAUDE.md` for the architecture, roadmap, and rationale.
 
@@ -79,9 +80,29 @@ scripts/                # Dev helpers
 styles/main.css
 ```
 
+## Practice features
+
+| Control | What it does |
+|---------|--------------|
+| **R / L** | Cycles each hand through BOTH → YOU → APP → OFF. **APP** plays that hand for you without grading it — the hand-isolation mode. |
+| **WAIT** | Holds the playhead until every note of the current chord is played. |
+| **LOOP A / B** | Drops section markers at the playhead and repeats between them, re-scoring each pass. |
+| **MET** | Click track locked to the song's tempo map, with accented downbeats. |
+| **Accuracy** | Live percentage, hit count and streak; a summary card at the end of a run. |
+
+Look-ahead, input latency offset, beats per bar and count-in live in **Settings**.
+
 ## Adding a keyboard profile
 
-Drop a new JSON file into `src/profiles/` and register it in `src/profiles/index.js`. See `src/profiles/roland-juno-g.json` for a reference.
+Drop a new JSON file into `src/profiles/` and register it in `src/profiles/index.js`.
+See `src/profiles/roland-juno-g.json` for a reference and `docs/adding-a-profile.md`
+for the full guide.
+
+```bash
+npm run validate:profiles
+```
+
+Profiles are validated at load time, by this CLI, and by CI.
 
 ## License
 

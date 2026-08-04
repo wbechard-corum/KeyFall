@@ -12,38 +12,90 @@ Both modes share a single WebMIDI connection layer. Connect your keyboard once, 
 
 The goal is to fill the gap left by web-based projects that went closed-source (Midiano, Sightread), and to provide something no existing tool does: a browser-based controller that works with specific hardware instruments, not just generic GM.
 
-## Current State (v0.1 POC)
+## Current State (v0.7)
 
-Two self-contained HTML prototypes that demonstrate both halves of the project:
+A single Vite app with a shared WebMIDI layer and a mode switcher (LIVE /
+SONGS / PATCHES / SETTINGS), plus a Node backend for the song library and the
+iPad mirror. The original `keyfall-piano.html` and `juno-g-midi.html`
+prototypes have been fully absorbed and removed.
 
-- `keyfall-piano.html` — Falling notes trainer
-- `juno-g-midi.html` — Keyboard controller (Roland Juno-G profile)
-
-These need to be merged into a single app with a shared MIDI layer and a mode switcher.
+Run `npm run dev:all` to start the front end and the backend together;
+`npm test` runs the suite (`test/`, plain node scripts, no framework).
 
 ### Trainer — What works today
 
-- **MIDI file parser**: Built from scratch, no dependencies. Parses header, tracks, tempo map, note on/off events. Handles format 0 and format 1 MIDI files. Converts delta ticks to absolute time using tempo map.
-- **Canvas renderer**: 88-key piano keyboard at bottom, falling note bars above. Notes colored by hand (right = blue `#4FC3F7`, left = orange `#FF8A65`). Active notes glow. Hit line separates note area from keyboard.
-- **Auto hand splitting**: Multi-track files map first two tracks to right/left. Single-track files split at middle C (MIDI 60).
-- **Playback engine**: `requestAnimationFrame` loop with delta-time accumulation. Speed multiplier (0.25x–1.5x). Play/pause/stop/seek.
-- **Wait mode**: Pauses playback until the correct note is played (via MIDI keyboard or on-screen tap).
-- **WebMIDI input**: Auto-detects connected MIDI keyboards. Captures note on/off. Highlights pressed keys on the virtual piano.
-- **WebAudio output**: Oscillator-based sound (triangle + detuned sine). Functional but not realistic.
-- **Touch piano**: Tap on-screen keys to play notes and trigger wait mode.
-- **4 built-in demos**: Twinkle Twinkle, Ode to Joy, C Major Scale, Minuet in G — hardcoded note arrays for testing without needing a MIDI file.
-- **Drag & drop**: Drop `.mid` files onto the canvas to load them.
+- **MIDI file parser**: Built from scratch, no dependencies. Formats 0 and 1,
+  tempo map, running status, unknown-chunk skipping. Dangling note-ons are
+  closed at end of track; a note retriggered before its note-off yields two
+  notes.
+- **Hand assignment**: By average pitch per track, with track-name hints
+  ("Right Hand", "L.H.", "Bass") taking precedence. Single-track files split
+  at middle C.
+- **Canvas renderer**: 88-key keyboard with falling note bars, hand-coloured.
+  Binary-searched note lookup, so a 40k-note song still renders in well under
+  a millisecond per frame. Configurable keyboard range (25-88 keys), key and
+  hand colours, and note labels.
+- **Playback engine**: `requestAnimationFrame` with a clamped delta so a
+  backgrounded tab doesn't teleport the playhead. Cursor-based note emission
+  (no note is ever stepped over). Speed 0.25x-1.5x.
+- **Scoring**: Every press is judged against the nearest unjudged note within
+  250ms and rated perfect / good / early / late; unplayed notes are swept as
+  misses. Running accuracy, streak, and an end-of-run summary. Works with wait
+  mode on or off.
+- **Hand modes**: Each hand is BOTH / YOU / APP / OFF — see "Hand modes" below.
+- **Wait mode**: Stalls until every note of the current chord is played. Only
+  waits on hands that are scored.
+- **Section repeat**: A/B loop points on the progress bar; each pass is
+  re-scored fresh.
+- **Metronome and count-in**: Click track driven by the song's tempo map, with
+  accented downbeats and an optional 1-2 bar count-in.
+- **Input offset**: Compensates for MIDI/audio latency before judging.
+- **Audio**: Synthesised piano with register-dependent spectra, velocity-
+  dependent brightness, two detuned strings, hammer noise, real note-off
+  damping and a sustain pedal (CC 64). 32-voice cap with voice stealing.
+- **Sheet music**: OpenSheetMusicDisplay view with a playback cursor, from
+  MusicXML converted server-side.
+- **WebMIDI input**: Auto-detects keyboards, captures note on/off and CC.
+- **Touch piano**: Per-pointer tracking, so one finger releasing doesn't kill
+  notes held elsewhere.
+- **4 built-in demos** plus drag & drop of `.mid` files.
 
 ### Controller — What works today
 
-- **WebMIDI output**: Sends Bank Select (CC 0 + CC 32) and Program Change messages to switch patches on a connected keyboard.
-- **Effect sliders**: Draggable vertical sliders that send CC messages in real-time. Current CCs: Reverb Send (91), Chorus Send (93), Cutoff (74), Resonance (71), Volume (7).
-- **MIDI channel selector**: Send on any of 16 MIDI channels.
-- **Device picker**: Lists all connected MIDI output devices. Auto-selects Roland devices.
-- **SysEx Identity Request**: Sends the standard `F0 7E 7F 06 01 F7` identity request and parses the response to display manufacturer, model, and firmware version. Useful for diagnostics (e.g., checking firmware version on a keyboard with a broken display).
-- **Roland Juno-G profile**: Bank definitions (PR-A through PR-H, USER, GM) with MSB/LSB values. Patch names for PR-A and PR-B; placeholder names for remaining banks.
-- **LCD-style current patch display**: Shows selected bank, patch number, and patch name.
-- **Mobile-optimized UI**: Designed for phone screens, touch-friendly controls.
+- **WebMIDI output**: Bank Select (CC 0 + CC 32) and Program Change.
+- **Effect sliders**: Vertical faders sending CC in real time, defined by the
+  active profile.
+- **Toggle controls**: On/off CC buttons (sustain, portamento, etc).
+- **MIDI channel selector** and **device picker** with auto-select.
+- **SysEx Identity Request**: Sends `F0 7E 7F 06 01 F7`, parses the reply, and
+  auto-selects a matching profile.
+- **Profile validation**: Every profile is checked at load; `npm run
+  validate:profiles` and CI check them too.
+- **Roland Juno-G and Generic GM profiles**, with an LCD-style patch display.
+- **Mobile-optimized UI**.
+
+### Songs, mirror and settings
+
+- **Song library**: Server-backed upload / rename / star / delete, with
+  atomic index writes and MIDI validation on upload.
+- **iPad mirror**: Host shows a 6-digit code; a second device drives playback,
+  patches and effects over a WebSocket relay. The code survives a host
+  reconnect.
+- **Settings**: Key range, colours, labels, look-ahead, input offset, beats
+  per bar, count-in, MIDI device and channel, profile, mirror pairing.
+- **PWA**: Manifest, service worker, self-hosted fonts, wake lock.
+
+### Hand modes
+
+A single "muted" flag used to conflate three questions — draw it, sound it,
+grade it. Each hand now carries a mode:
+
+| Mode | Visible | Audible | Scored | Use |
+|------|---------|---------|--------|-----|
+| BOTH | yes | yes | yes | Default: you play it, the app plays along |
+| YOU  | yes | no  | yes | You play it, the app stays out of the way |
+| APP  | yes | yes | no  | Hand isolation: the app plays it for you |
+| OFF  | no  | no  | no  | Hidden entirely |
 
 ## Keyboard Profile System
 
@@ -160,42 +212,56 @@ Community contributions for new profiles would be a major value-add. Each profil
 keyfall/
 ├── index.html
 ├── src/
-│   ├── main.js              # Entry point, mode switching, app init
+│   ├── main.js                # Entry point, mode switching, app init
 │   ├── midi/
-│   │   ├── connection.js     # WebMIDI device discovery, connect/disconnect
-│   │   ├── input.js          # MIDI input handling (note on/off, CC)
-│   │   ├── output.js         # MIDI output (PC, CC, SysEx)
-│   │   ├── sysex.js          # SysEx builders: Roland DT1, Yamaha, etc.
-│   │   └── parser.js         # MIDI file parser (.mid → note objects)
+│   │   ├── connection.js      # WebMIDI device discovery, connect/disconnect
+│   │   ├── input.js           # MIDI input (note on/off, CC, SysEx)
+│   │   ├── output.js          # MIDI output (PC, CC, SysEx)
+│   │   ├── sysex.js           # SysEx builders: Roland DT1, identity reply
+│   │   └── parser.js          # MIDI file parser (.mid → note objects)
 │   ├── trainer/
-│   │   ├── renderer.js       # Canvas rendering (piano, falling notes, grid)
-│   │   ├── playback.js       # Timing, speed, wait mode, scoring
-│   │   ├── audio.js          # WebAudio / SoundFont playback
-│   │   └── ui.js             # Trainer controls (play, stop, speed, tracks)
+│   │   ├── renderer.js        # Canvas rendering (piano, falling notes, grid)
+│   │   ├── playback.js        # Clock, wait mode, hand modes, section repeat
+│   │   ├── scoring.js         # Hit/miss judging, accuracy, combo
+│   │   ├── metronome.js       # Click track + count-in from the tempo map
+│   │   ├── audio.js           # Synthesised piano voice, sustain pedal
+│   │   ├── sheet.js           # OpenSheetMusicDisplay wrapper + cursor
+│   │   ├── library.js         # Songs API client
+│   │   ├── demos.js           # Built-in demo songs
+│   │   └── ui.js              # Trainer controls and layout
 │   ├── controller/
-│   │   ├── controller.js     # Patch selection, CC sending, SysEx
-│   │   ├── profile-loader.js # Load and validate keyboard profiles
-│   │   ├── effects-ui.js     # Slider rendering and touch handling
-│   │   └── ui.js             # Controller layout, bank/patch list, LCD
+│   │   ├── controller.js      # Patch selection, CC sending, SysEx
+│   │   ├── profile-loader.js  # Load, validate and normalise profiles
+│   │   ├── effects-ui.js      # Slider and toggle rendering
+│   │   └── ui.js              # Controller layout, bank/patch list, LCD
+│   ├── songs/ui.js            # Song library screen
+│   ├── settings/ui.js         # Settings screen
+│   ├── mirror-client/ui.js    # Remote UI served at #mirror=<code>
 │   ├── shared/
-│   │   ├── constants.js      # Colors, note names, key geometry
-│   │   ├── piano-keyboard.js # Shared piano key layout computation
-│   │   └── settings.js       # User preferences (channel, theme, etc.)
+│   │   ├── constants.js       # Colors, note names, hand modes, timing windows
+│   │   ├── piano-keyboard.js  # Shared piano key layout computation
+│   │   ├── settings.js        # User preferences
+│   │   ├── mirror.js          # WebSocket host/client
+│   │   ├── app-mirror.js      # Mirror state aggregation + command routing
+│   │   ├── wake-lock.js       # Keep the screen awake
+│   │   └── fonts.js           # Self-hosted IBM Plex imports
 │   └── profiles/
 │       ├── roland-juno-g.json
 │       ├── generic-gm.json
-│       └── index.js          # Profile registry and loader
-├── assets/
-│   └── sounds/               # SoundFont or sample files
-├── demos/                    # Built-in demo MIDI files
+│       ├── validate.js        # Profile schema validation
+│       └── index.js           # Profile registry
+├── server/
+│   ├── mirror-server.js       # Songs API + mirror relay + MIDI→MusicXML
+│   └── Dockerfile             # Includes the music21 converter
+├── test/                      # Test suite — `npm test`
+├── scripts/                   # dev-all, validate-profiles
 ├── docs/
-│   ├── adding-a-profile.md   # Guide for contributing keyboard profiles
-│   └── profile-schema.md     # Profile JSON schema reference
-├── styles/
-│   └── main.css
+│   ├── adding-a-profile.md
+│   └── profile-schema.md
+├── styles/main.css
 ├── CLAUDE.md
 ├── README.md
-├── LICENSE                   # MIT
+├── LICENSE                    # MIT
 └── package.json
 ```
 
@@ -210,43 +276,58 @@ keyfall/
 
 ## Roadmap
 
-### Phase 1: Project scaffolding
-- Split both HTML prototypes into the module structure above
-- Set up Vite with ES modules
-- Implement shared WebMIDI connection layer with SysEx support
-- Mode switcher UI (trainer / controller tabs or a top-level nav)
-- Basic PWA manifest and service worker
+Phases 1-3 are essentially done. Remaining work is listed under "Not done yet".
 
-### Phase 2: Controller hardening
-- Formalize the profile JSON schema (JSON Schema or TypeScript types)
-- Build the profile loader with validation and error reporting
-- Implement auto-detection via Identity Request/Reply matching
-- Create the Generic GM profile as the fallback (128 standard GM patch names, standard drum map)
-- Complete Juno-G profile: fill in patch names for PR-C through PR-H and USER banks
-- Add sustain toggle (CC 64) and other common toggle controls from profiles
-- SysEx parameter editor for Roland DT1 format (needed for MFX/delay control on Juno-G)
-- Profile contribution guide (`docs/adding-a-profile.md`)
+### Phase 1: Project scaffolding — done
+- [x] Split both HTML prototypes into the module structure above
+- [x] Vite with ES modules
+- [x] Shared WebMIDI connection layer with SysEx support
+- [x] Mode switcher UI
+- [x] PWA manifest and service worker
 
-### Phase 3: Trainer improvements
-- Replace oscillator audio with SoundFont-based playback (WebAudioFont or Tone.js Sampler with Salamander Grand Piano samples)
-- Accuracy scoring: per-note hit/miss coloring, running accuracy %, end-of-song summary
-- Loop mode: select a section on the progress bar, repeat until mastered
-- Hand isolation: muted hand plays audio but isn't scored
-- Chord wait mode: wait for all notes in a chord, not just one
+### Phase 2: Controller hardening — mostly done
+- [x] Profile schema validation with per-field error reporting
+- [x] Profile loader with validation, plus a CLI and CI gate
+- [x] Auto-detection via Identity Request/Reply matching
+- [x] Generic GM fallback profile
+- [x] Juno-G patch names for all banks
+- [x] Toggle controls (sustain etc) from profiles
+- [x] Profile contribution guide
+- [ ] SysEx parameter editor UI for Roland DT1 (builders exist; no editor screen)
+
+### Phase 3: Trainer improvements — mostly done
+- [x] Accuracy scoring: per-note rating colours, running accuracy, summary
+- [x] Loop mode: A/B section repeat
+- [x] Hand isolation: APP mode plays a hand without scoring it
+- [x] Chord wait mode
+- [x] Metronome, count-in, configurable look-ahead, input latency offset
+- [~] Audio: rewritten synthesis, much closer to a piano, but still not
+      sampled. A sampled backend can drop in behind the same instrument API —
+      the open question is whether tens of megabytes of samples are worth
+      losing the offline-PWA story.
 
 ### Phase 4: Polish and features
-- Sheet music rendering alongside falling notes (VexFlow or OpenSheetMusicDisplay)
-- Note labels (note names, fingering numbers, solfège)
-- MIDI output playback (play the song on the keyboard's own sounds via the controller's output)
-- Recording mode with playback comparison
-- Mobile touch improvements (pinch zoom, swipe navigation)
-- Custom themes and color preferences
+- [x] Sheet music rendering (OpenSheetMusicDisplay, server-side MusicXML)
+- [x] Note labels
+- [x] MIDI output playback through the keyboard's own sounds
+- [x] Custom colours and themes
+- [ ] Fingering numbers and solfège labels
+- [ ] Recording mode with playback comparison
+- [ ] Mobile touch improvements (pinch zoom, swipe navigation)
 
 ### Phase 5: Community
-- Profile contribution guide with template and validation CLI tool
-- MIDI file library (links to freely available MIDI sources, not hosted files)
-- Documentation site
-- CI to validate profile JSON against schema on PR
+- [x] Profile contribution guide with a validation CLI
+- [x] CI validating profile JSON on PR
+- [ ] MIDI file library (links to freely available sources, not hosted files)
+- [ ] Documentation site
+- [ ] More profiles: Juno-DS, Yamaha PSR, Korg Minilogue, Nord Stage
+
+### Not done yet — the honest list
+- Sampled piano audio
+- SysEx parameter editor screen
+- Recording and playback comparison
+- Fingering / solfège labels
+- Any profile beyond Juno-G and Generic GM
 
 ## Architecture Decisions
 
@@ -283,12 +364,13 @@ Piano range: MIDI 21 (A0) through MIDI 108 (C8). The renderer dynamically comput
 The playback clock uses `performance.now()` with delta-time accumulation, multiplied by a speed factor. MIDI file ticks are converted to seconds via a tempo map built during parsing. The tempo map is an array of `{ tick, tempo (microseconds per beat), time (seconds) }` entries. `tickToTime(tick)` walks the map to convert any tick position to absolute seconds.
 
 ### Hand assignment heuristic
-- Multi-track MIDI: first two non-empty tracks map to track 0 (right) and track 1 (left)
-- Single-track MIDI: notes at or above MIDI 60 (middle C) are right hand, below are left hand
-- This heuristic is wrong for many pieces. A future improvement would be to use a smarter algorithm (e.g., voice separation by pitch contour continuity) or allow manual track-to-hand mapping in the UI.
+- Track names are checked first: a track called "Right Hand", "R.H.", "Treble" or "Melody" goes to the right hand; "Left Hand", "L.H.", "Bass" or "Accomp" to the left.
+- Otherwise tracks are ranked by average pitch — the highest-average track becomes the right hand, the rest the left. With exactly two tracks this reduces to the familiar "melody on top, accompaniment below".
+- Single-track MIDI: notes at or above MIDI 60 (middle C) are right hand, below are left.
+- Still a heuristic. Manual track-to-hand mapping in the UI would be the next improvement.
 
 ### Wait mode implementation
-When enabled, the playback loop checks if any note's start time falls within ±50ms of the current playback position. If so, it sets `waitingForNote` and stops advancing `currentTime`. When the matching MIDI note number is received (from WebMIDI input or on-screen tap), `waitingForNote` is cleared and playback resumes. Current limitation: only waits for one note at a time. Chords need all notes to be checked simultaneously.
+When enabled, the playback loop looks for a scored note whose start time falls within ±50ms of the playhead, collects every note starting within 30ms of it into a chord, and stops advancing `currentTime` until all of them have been played. Notes belonging to a hand in APP or OFF mode are excluded, so the app can play one hand while you're only held to the other. Wait-mode hits are credited as perfect and flag the run as assisted, since a stalled playhead makes timing meaningless.
 
 ### Controller MIDI output
 Patch selection sends three messages in sequence on the selected MIDI channel:
