@@ -41,6 +41,27 @@ export const TIMING = {
   ok: 0.25,      // outside this, a press can't be attributed to the note
 };
 
+// Solfège. Fixed do treats C as Do regardless of key; movable do puts Do on
+// the tonic, so the same syllable means the same scale degree in any key.
+// Chromatic notes take the "raised" form (Di, Ri, Fi, Si, Li) going up.
+export const SOLFEGE = ['Do', 'Di', 'Re', 'Ri', 'Mi', 'Fa', 'Fi', 'Sol', 'Si', 'La', 'Li', 'Ti'];
+
+// Sharps in the key signature -> tonic pitch class, for movable do.
+// -7..7 maps Cb major through C# major (relative minors share a tonic set).
+const MAJOR_TONIC_BY_SHARPS = { '-7': 11, '-6': 6, '-5': 1, '-4': 8, '-3': 3, '-2': 10, '-1': 5, 0: 0, 1: 7, 2: 2, 3: 9, 4: 4, 5: 11, 6: 6, 7: 1 };
+
+export function tonicPitchClass(keySignature) {
+  if (!keySignature) return 0;
+  const major = MAJOR_TONIC_BY_SHARPS[String(keySignature.sharps)] ?? 0;
+  // A minor key's tonic is a minor third below its relative major.
+  return keySignature.minor ? (major + 9) % 12 : major;
+}
+
+export function solfegeName(midi, { movable = false, keySignature = null } = {}) {
+  const tonic = movable ? tonicPitchClass(keySignature) : 0;
+  return SOLFEGE[((midi - tonic) % 12 + 12) % 12];
+}
+
 export const RATING_COLORS = {
   perfect: '#7ae58a',
   good: '#4dd6c3',

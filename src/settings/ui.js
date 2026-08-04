@@ -31,8 +31,26 @@ const TEMPLATE = `
         </div>
         <div class="settings-row">
           <div class="settings-row-label">Keyboard labels</div>
-          <div class="settings-row-value" data-role="label-mode">
-            <span class="settings-row-hint">FALLING NOTES ARE ALWAYS LABELED.</span>
+          <div class="settings-row-value" data-role="label-mode"></div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Falling notes</div>
+          <div class="settings-row-value" data-role="note-label-mode"></div>
+        </div>
+        <div class="settings-row hidden" data-role="solfege-row">
+          <div class="settings-row-label">Solfège</div>
+          <div class="settings-row-value" data-role="solfege-mode">
+            <span class="settings-row-hint">
+              MOVABLE DO NEEDS A KEY SIGNATURE IN THE MIDI FILE; IT FALLS BACK TO C.
+            </span>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Fingering</div>
+          <div class="settings-row-value" data-role="fingering-mode">
+            <span class="settings-row-hint">
+              AUTOMATIC AND APPROXIMATE — A STARTING POINT, NOT AN EDITION.
+            </span>
           </div>
         </div>
       </div>
@@ -210,6 +228,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
 
   buildKeyRange();
   buildLabelMode();
+  buildNoteLabelControls();
   buildPracticeControls();
   buildInstrumentRow();
   buildColorRow('[data-role="ck-color"]', 'cKeyColor', KEY_SWATCHES_C);
@@ -256,6 +275,19 @@ export function mountSettings(root, { onProfileChange } = {}) {
     $('[data-role="instrument"]').querySelectorAll('button').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.value === (s.instrument || 'synth'));
     });
+    for (const [sel, key, fallback] of [
+      ['[data-role="note-label-mode"]', 'noteLabelMode', 'names'],
+      ['[data-role="solfege-mode"]', 'solfegeMode', 'fixed'],
+      ['[data-role="fingering-mode"]', 'fingeringMode', 'off'],
+    ]) {
+      const value = s[key] ?? fallback;
+      $(sel).querySelectorAll('button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.value === String(value));
+      });
+    }
+    $('[data-role="solfege-row"]').classList.toggle('hidden',
+      (s.noteLabelMode || 'names') !== 'solfege');
+
     for (const [sel, key, fallback] of [
       ['[data-role="beats-per-bar"]', 'beatsPerBar', 4],
       ['[data-role="count-in"]', 'countInBars', 0],
@@ -313,6 +345,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
 
   function buildChipRow(sel, settingKey, options, fallback) {
     const host = $(sel);
+    const hint = host.querySelector('.settings-row-hint');
     host.innerHTML = '';
     const current = getSettings()[settingKey] ?? fallback;
     for (const [value, label] of options) {
@@ -324,6 +357,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
       btn.addEventListener('click', () => updateSettings({ [settingKey]: value }));
       host.appendChild(btn);
     }
+    if (hint) host.appendChild(hint);
   }
 
   function buildPracticeControls() {
@@ -394,6 +428,15 @@ export function mountSettings(root, { onProfileChange } = {}) {
       bar.style.width = '0%';
       label.textContent = st.error ? `Failed: ${st.error}` : 'Failed';
     }
+  }
+
+  function buildNoteLabelControls() {
+    buildChipRow('[data-role="note-label-mode"]', 'noteLabelMode',
+      [['none', 'None'], ['names', 'Note names'], ['solfege', 'Solfège']], 'names');
+    buildChipRow('[data-role="solfege-mode"]', 'solfegeMode',
+      [['fixed', 'Fixed do'], ['movable', 'Movable do']], 'fixed');
+    buildChipRow('[data-role="fingering-mode"]', 'fingeringMode',
+      [['off', 'Off'], ['auto', 'Automatic']], 'off');
   }
 
   function buildColorRow(sel, settingKey, swatches) {

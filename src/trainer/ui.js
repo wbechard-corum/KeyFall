@@ -17,6 +17,7 @@ import { DEMOS } from './demos.js';
 import { saveSong } from './library.js';
 import { createSheet, retryNotation } from './sheet.js';
 import { createMetronome } from './metronome.js';
+import { ensureFingering } from './fingering.js';
 
 const TEMPLATE = `
   <div class="trainer-root">
@@ -396,6 +397,8 @@ export function mountTrainer(root) {
   }
 
   function onSongLoaded(song, meta = {}) {
+    renderer.setKeySignature(song.keySignature);
+    if ((getSetting('fingeringMode') || 'off') === 'auto') ensureFingering(song);
     playback.setSong(song);
     const info = $('[data-role="song-info"]');
     info.textContent = `${song.name} · ${song.notes.length} notes · ${formatTime(song.duration)}`;
@@ -604,11 +607,20 @@ export function mountTrainer(root) {
         left: s.leftHandColor,
       });
       renderer.setLabelMode(s.labelMode || 'c-only');
+      renderer.setNoteLabelMode(s.noteLabelMode || 'names');
+      renderer.setSolfegeMode(s.solfegeMode || 'fixed');
+      renderer.setFingeringMode(s.fingeringMode || 'off');
+      // Fingering is a pure function of the notes, so compute it once and
+      // cache it on the song rather than on every frame.
+      if ((s.fingeringMode || 'off') === 'auto' && playback.state.song) {
+        ensureFingering(playback.state.song);
+      }
     }
     applyVisualSettings();
     const unsubscribeSettings = onSettingsChange((s, patch) => {
       const visualKeys = ['cKeyColor','whiteKeyColor','blackKeyColor',
-        'rightHandColor','leftHandColor','labelMode'];
+        'rightHandColor','leftHandColor','labelMode',
+        'noteLabelMode','solfegeMode','fingeringMode'];
       if (visualKeys.some(k => k in patch)) {
         applyVisualSettings(s);
         render();

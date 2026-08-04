@@ -27,8 +27,12 @@ const DEFAULTS = {
   rightHandColor: '#4dd6c3',
   leftHandColor: '#c89dff',
 
-  // 'none' | 'c-only' | 'all'
+  // Piano-key labels: 'none' | 'c-only' | 'all'
   labelMode: 'c-only',
+  // Falling-note labels: 'none' | 'names' | 'solfege'
+  noteLabelMode: 'names',
+  solfegeMode: 'fixed',        // 'fixed' = Do is always C; 'movable' = Do is the tonic
+  fingeringMode: 'off',        // 'off' | 'auto'
 };
 
 function read() {

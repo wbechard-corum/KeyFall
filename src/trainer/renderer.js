@@ -1,4 +1,6 @@
-import { COLORS, NOTE_NAMES, RATING_COLORS, resolveHandMode } from '../shared/constants.js';
+import {
+  COLORS, NOTE_NAMES, RATING_COLORS, resolveHandMode, solfegeName,
+} from '../shared/constants.js';
 import { computeKeyLayout, getNoteX, getNoteWidth } from '../shared/piano-keyboard.js';
 
 const BOTH_HANDS = [resolveHandMode('both'), resolveHandMode('both')];
@@ -91,8 +93,15 @@ export function createRenderer(canvas) {
       right: COLORS.rightHand,
       left: COLORS.leftHand,
     },
-    // 'none' | 'c-only' | 'all'
+    // Piano-key labels: 'none' | 'c-only' | 'all'
     labelMode: 'c-only',
+    // Falling-note labels: 'none' | 'names' | 'solfege'
+    noteLabelMode: 'names',
+    // 'fixed' puts Do on C; 'movable' puts Do on the song's tonic.
+    solfegeMode: 'fixed',
+    // 'off' | 'auto'
+    fingeringMode: 'off',
+    keySignature: null,
   };
 
   function resize() {
@@ -122,6 +131,36 @@ export function createRenderer(canvas) {
 
   function setLabelMode(mode) {
     state.labelMode = mode;
+  }
+
+  function setNoteLabelMode(mode) {
+    state.noteLabelMode = ['none', 'names', 'solfege'].includes(mode) ? mode : 'names';
+  }
+
+  function setSolfegeMode(mode) {
+    state.solfegeMode = mode === 'movable' ? 'movable' : 'fixed';
+  }
+
+  function setFingeringMode(mode) {
+    state.fingeringMode = mode === 'auto' ? 'auto' : 'off';
+  }
+
+  // The song's key signature, needed for movable-do solfège.
+  function setKeySignature(key) {
+    state.keySignature = key || null;
+  }
+
+  function noteLabel(note) {
+    if (state.noteLabelMode === 'none') return null;
+    if (state.noteLabelMode === 'solfege') {
+      return solfegeName(note.midi, {
+        movable: state.solfegeMode === 'movable',
+        keySignature: state.keySignature,
+      });
+    }
+    const pc = note.midi % 12;
+    // Only Cs carry their octave, so the labels stay readable at speed.
+    return pc === 0 ? `${NOTE_NAMES[pc]}${Math.floor(note.midi / 12) - 1}` : NOTE_NAMES[pc];
   }
 
   // How many seconds of upcoming music fill the note area. Strongly personal:
@@ -247,19 +286,33 @@ export function createRenderer(canvas) {
         ctx.globalAlpha = 1;
       }
 
-      // Falling-note labels are always on — knowing the upcoming
-      // pitch is the whole point of the trainer. Piano-key labels
-      // honour state.labelMode separately (in drawPiano).
-      const pc = note.midi % 12;
+      // Falling-note labels. Piano-key labels honour state.labelMode
+      // separately (in drawPiano).
       if (!isPast && noteH > 14 && w > 14) {
-        const noteName = NOTE_NAMES[pc];
-        const octave = Math.floor(note.midi / 12) - 1;
-        ctx.fillStyle = isActive ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.6)';
-        ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        const text = noteLabel(note);
         const labelY = Math.min(yTop + noteH / 2, yBottom - 8);
-        ctx.fillText(pc === 0 ? noteName + octave : noteName, x, labelY);
+        if (text) {
+          ctx.fillStyle = isActive ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.6)';
+          ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, x, labelY);
+        }
+        // Fingering rides in the top corner of the bar so it never collides
+        // with the pitch label, and only when there's room for both.
+        if (state.fingeringMode === 'auto' && note.finger && noteH > 26 && w > 16) {
+          const fx = x - w / 2 + 2;
+          const fy = yTop + 2;
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.beginPath();
+          ctx.roundRect(fx, fy, 11, 11, 3);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.92)';
+          ctx.font = '700 8px "IBM Plex Mono", ui-monospace, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(note.finger), fx + 5.5, fy + 6);
+        }
       }
     }
   }
@@ -406,6 +459,10 @@ export function createRenderer(canvas) {
     setKeyboardRange,
     setColors,
     setLabelMode,
+    setNoteLabelMode,
+    setSolfegeMode,
+    setFingeringMode,
+    setKeySignature,
     setFallTime,
     getState: () => state,
   };

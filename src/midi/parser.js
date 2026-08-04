@@ -128,6 +128,9 @@ export function parseMIDI(input) {
   }
 
   const tempoMap = [{ tick: 0, tempo: 500000, time: 0 }];
+  // Meta 0x59: sharps/flats as a signed byte, then 0 major / 1 minor. Used
+  // for movable-do solfège, which is meaningless without knowing the key.
+  let keySignature = null;
   for (const track of tracks) {
     let tick = 0;
     for (const ev of track) {
@@ -135,6 +138,11 @@ export function parseMIDI(input) {
       if (ev.meta && ev.type === 0x51 && ev.data.length === 3) {
         const tempo = (ev.data[0] << 16) | (ev.data[1] << 8) | ev.data[2];
         tempoMap.push({ tick, tempo, time: 0 });
+      } else if (ev.meta && ev.type === 0x59 && ev.data.length >= 2 && keySignature === null) {
+        const sharps = ev.data[0] > 127 ? ev.data[0] - 256 : ev.data[0];
+        if (sharps >= -7 && sharps <= 7) {
+          keySignature = { sharps, minor: ev.data[1] === 1 };
+        }
       }
     }
   }
@@ -244,7 +252,8 @@ export function parseMIDI(input) {
   let duration = 0;
   for (const n of notes) if (n.endTime > duration) duration = n.endTime;
 
-  return { notes, duration, format, tracks: usedTracks.length, trackNames, tempoMap, ticksPerBeat };
+  return { notes, duration, format, tracks: usedTracks.length, trackNames,
+           tempoMap, ticksPerBeat, keySignature };
 }
 
 // Returns 0 (right), 1 (left), or null when the name says nothing useful.
