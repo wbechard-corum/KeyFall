@@ -8,6 +8,7 @@ import { availableProfiles, loadProfile, loadDefaultProfile } from '../controlle
 import {
   startMirror, stopMirror, isMirrorActive, onMirrorStatus,
 } from '../shared/app-mirror.js';
+import { INSTRUMENTS, getInstrument, setInstrument, onSamplerStatus } from '../trainer/audio.js';
 
 const KEY_SWATCHES_C      = ['#4dd6c3','#c89dff','#6ae3d0','#ff9f7a','#e2c05a','#f4efe7'];
 const KEY_SWATCHES_WHITE  = ['#eaeef2','#f4efe7','#e6dbc5','#cdd4dc','#a4aeb8'];
@@ -68,6 +69,32 @@ const TEMPLATE = `
         <div class="settings-row">
           <div class="settings-row-label">Count-in</div>
           <div class="settings-row-value" data-role="count-in"></div>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <div class="settings-card-head">
+          <div class="settings-card-title">Piano sound</div>
+          <div class="settings-card-sub">
+            The sampled grand is a one-time download, then cached for offline use.
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-label">Instrument</div>
+          <div class="settings-row-value" data-role="instrument"></div>
+        </div>
+        <div class="settings-row hidden" data-role="sampler-row">
+          <div class="settings-row-label">Samples</div>
+          <div class="settings-row-value">
+            <div class="settings-progress"><div class="settings-progress-fill" data-role="sampler-bar"></div></div>
+            <span class="settings-range-value" data-role="sampler-status"></span>
+          </div>
+        </div>
+        <div class="settings-row" data-role="sampler-credit-row">
+          <div class="settings-row-label">Credit</div>
+          <div class="settings-row-value">
+            <span class="settings-row-hint" data-role="sampler-credit">—</span>
+          </div>
         </div>
       </div>
 
@@ -184,6 +211,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
   buildKeyRange();
   buildLabelMode();
   buildPracticeControls();
+  buildInstrumentRow();
   buildColorRow('[data-role="ck-color"]', 'cKeyColor', KEY_SWATCHES_C);
   buildColorRow('[data-role="wk-color"]', 'whiteKeyColor', KEY_SWATCHES_WHITE);
   buildColorRow('[data-role="bk-color"]', 'blackKeyColor', KEY_SWATCHES_BLACK);
@@ -199,6 +227,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
   const unsubscribeMIDI = onStateChange(() => { renderDevices(); });
   const unsubscribeSettings = onSettingsChange(() => renderAll());
   const unsubscribeMirror = onMirrorStatus(renderMirror);
+  const unsubscribeSampler = onSamplerStatus(renderSamplerStatus);
   const unsubscribeSysEx = onSysEx((bytes) => {
     const reply = parseIdentityReply(bytes);
     if (reply) showIdentityReply(reply);
@@ -224,6 +253,9 @@ export function mountSettings(root, { onProfileChange } = {}) {
     // The controller view has its own profile picker, and auto-detection can
     // switch profiles on its own. Keep this one in step instead of showing
     // whatever was selected when the tab was first built.
+    $('[data-role="instrument"]').querySelectorAll('button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === (s.instrument || 'synth'));
+    });
     for (const [sel, key, fallback] of [
       ['[data-role="beats-per-bar"]', 'beatsPerBar', 4],
       ['[data-role="count-in"]', 'countInBars', 0],
@@ -317,6 +349,51 @@ export function mountSettings(root, { onProfileChange } = {}) {
       [[2, '2'], [3, '3'], [4, '4'], [6, '6']], 4);
     buildChipRow('[data-role="count-in"]', 'countInBars',
       [[0, 'Off'], [1, '1 bar'], [2, '2 bars']], 0);
+  }
+
+  function buildInstrumentRow() {
+    const host = $('[data-role="instrument"]');
+    host.innerHTML = '';
+    const current = getSettings().instrument || 'synth';
+    for (const inst of Object.values(INSTRUMENTS)) {
+      const btn = document.createElement('button');
+      btn.className = 'settings-chip';
+      btn.dataset.value = inst.id;
+      btn.textContent = inst.label;
+      btn.title = inst.hint;
+      if (inst.id === current) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        updateSettings({ instrument: inst.id });
+        // Selecting the sampled grand starts the download; the synth keeps
+        // playing until it finishes.
+        setInstrument(inst.id);
+      });
+      host.appendChild(btn);
+    }
+  }
+
+  function renderSamplerStatus(st) {
+    const row = $('[data-role="sampler-row"]');
+    const bar = $('[data-role="sampler-bar"]');
+    const label = $('[data-role="sampler-status"]');
+    const credit = $('[data-role="sampler-credit"]');
+
+    credit.textContent = st.attribution
+      || 'Salamander Grand Piano V3 by Alexander Holm, CC BY 3.0';
+
+    if (st.state === 'idle') { row.classList.add('hidden'); return; }
+    row.classList.remove('hidden');
+
+    if (st.state === 'loading') {
+      bar.style.width = `${Math.round(st.progress * 100)}%`;
+      label.textContent = `${st.loaded}/${st.total}`;
+    } else if (st.state === 'ready') {
+      bar.style.width = '100%';
+      label.textContent = 'Ready';
+    } else if (st.state === 'error') {
+      bar.style.width = '0%';
+      label.textContent = st.error ? `Failed: ${st.error}` : 'Failed';
+    }
   }
 
   function buildColorRow(sel, settingKey, swatches) {
@@ -497,6 +574,7 @@ export function mountSettings(root, { onProfileChange } = {}) {
       unsubscribeMIDI();
       unsubscribeSettings();
       unsubscribeMirror();
+      unsubscribeSampler();
       unsubscribeSysEx();
     },
     refresh() { renderAll(); renderDevices(); renderProfileNotes(); },

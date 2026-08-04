@@ -1,0 +1,512 @@
+{
+  "name": "Salamander Grand Piano V3",
+  "license": "CC-BY-3.0",
+  "attribution": "Alexander Holm — Salamander Grand Piano V3, CC BY 3.0",
+  "sampleRate": 32000,
+  "layers": [
+    {
+      "id": "v2",
+      "maxVelocity": 30,
+      "samples": [
+        {
+          "midi": 21,
+          "file": "A0_v2.mp3"
+        },
+        {
+          "midi": 24,
+          "file": "C1_v2.mp3"
+        },
+        {
+          "midi": 27,
+          "file": "Ds1_v2.mp3"
+        },
+        {
+          "midi": 30,
+          "file": "Fs1_v2.mp3"
+        },
+        {
+          "midi": 33,
+          "file": "A1_v2.mp3"
+        },
+        {
+          "midi": 36,
+          "file": "C2_v2.mp3"
+        },
+        {
+          "midi": 39,
+          "file": "Ds2_v2.mp3"
+        },
+        {
+          "midi": 42,
+          "file": "Fs2_v2.mp3"
+        },
+        {
+          "midi": 45,
+          "file": "A2_v2.mp3"
+        },
+        {
+          "midi": 48,
+          "file": "C3_v2.mp3"
+        },
+        {
+          "midi": 51,
+          "file": "Ds3_v2.mp3"
+        },
+        {
+          "midi": 54,
+          "file": "Fs3_v2.mp3"
+        },
+        {
+          "midi": 57,
+          "file": "A3_v2.mp3"
+        },
+        {
+          "midi": 60,
+          "file": "C4_v2.mp3"
+        },
+        {
+          "midi": 63,
+          "file": "Ds4_v2.mp3"
+        },
+        {
+          "midi": 66,
+          "file": "Fs4_v2.mp3"
+        },
+        {
+          "midi": 69,
+          "file": "A4_v2.mp3"
+        },
+        {
+          "midi": 72,
+          "file": "C5_v2.mp3"
+        },
+        {
+          "midi": 75,
+          "file": "Ds5_v2.mp3"
+        },
+        {
+          "midi": 78,
+          "file": "Fs5_v2.mp3"
+        },
+        {
+          "midi": 81,
+          "file": "A5_v2.mp3"
+        },
+        {
+          "midi": 84,
+          "file": "C6_v2.mp3"
+        },
+        {
+          "midi": 87,
+          "file": "Ds6_v2.mp3"
+        },
+        {
+          "midi": 90,
+          "file": "Fs6_v2.mp3"
+        },
+        {
+          "midi": 93,
+          "file": "A6_v2.mp3"
+        },
+        {
+          "midi": 96,
+          "file": "C7_v2.mp3"
+        },
+        {
+          "midi": 99,
+          "file": "Ds7_v2.mp3"
+        },
+        {
+          "midi": 102,
+          "file": "Fs7_v2.mp3"
+        },
+        {
+          "midi": 105,
+          "file": "A7_v2.mp3"
+        },
+        {
+          "midi": 108,
+          "file": "C8_v2.mp3"
+        }
+      ]
+    },
+    {
+      "id": "v7",
+      "maxVelocity": 60,
+      "samples": [
+        {
+          "midi": 21,
+          "file": "A0_v7.mp3"
+        },
+        {
+          "midi": 24,
+          "file": "C1_v7.mp3"
+        },
+        {
+          "midi": 27,
+          "file": "Ds1_v7.mp3"
+        },
+        {
+          "midi": 30,
+          "file": "Fs1_v7.mp3"
+        },
+        {
+          "midi": 33,
+          "file": "A1_v7.mp3"
+        },
+        {
+          "midi": 36,
+          "file": "C2_v7.mp3"
+        },
+        {
+          "midi": 39,
+          "file": "Ds2_v7.mp3"
+        },
+        {
+          "midi": 42,
+          "file": "Fs2_v7.mp3"
+        },
+        {
+          "midi": 45,
+          "file": "A2_v7.mp3"
+        },
+        {
+          "midi": 48,
+          "file": "C3_v7.mp3"
+        },
+        {
+          "midi": 51,
+          "file": "Ds3_v7.mp3"
+        },
+        {
+          "midi": 54,
+          "file": "Fs3_v7.mp3"
+        },
+        {
+          "midi": 57,
+          "file": "A3_v7.mp3"
+        },
+        {
+          "midi": 60,
+          "file": "C4_v7.mp3"
+        },
+        {
+          "midi": 63,
+          "file": "Ds4_v7.mp3"
+        },
+        {
+          "midi": 66,
+          "file": "Fs4_v7.mp3"
+        },
+        {
+          "midi": 69,
+          "file": "A4_v7.mp3"
+        },
+        {
+          "midi": 72,
+          "file": "C5_v7.mp3"
+        },
+        {
+          "midi": 75,
+          "file": "Ds5_v7.mp3"
+        },
+        {
+          "midi": 78,
+          "file": "Fs5_v7.mp3"
+        },
+        {
+          "midi": 81,
+          "file": "A5_v7.mp3"
+        },
+        {
+          "midi": 84,
+          "file": "C6_v7.mp3"
+        },
+        {
+          "midi": 87,
+          "file": "Ds6_v7.mp3"
+        },
+        {
+          "midi": 90,
+          "file": "Fs6_v7.mp3"
+        },
+        {
+          "midi": 93,
+          "file": "A6_v7.mp3"
+        },
+        {
+          "midi": 96,
+          "file": "C7_v7.mp3"
+        },
+        {
+          "midi": 99,
+          "file": "Ds7_v7.mp3"
+        },
+        {
+          "midi": 102,
+          "file": "Fs7_v7.mp3"
+        },
+        {
+          "midi": 105,
+          "file": "A7_v7.mp3"
+        },
+        {
+          "midi": 108,
+          "file": "C8_v7.mp3"
+        }
+      ]
+    },
+    {
+      "id": "v11",
+      "maxVelocity": 90,
+      "samples": [
+        {
+          "midi": 21,
+          "file": "A0_v11.mp3"
+        },
+        {
+          "midi": 24,
+          "file": "C1_v11.mp3"
+        },
+        {
+          "midi": 27,
+          "file": "Ds1_v11.mp3"
+        },
+        {
+          "midi": 30,
+          "file": "Fs1_v11.mp3"
+        },
+        {
+          "midi": 33,
+          "file": "A1_v11.mp3"
+        },
+        {
+          "midi": 36,
+          "file": "C2_v11.mp3"
+        },
+        {
+          "midi": 39,
+          "file": "Ds2_v11.mp3"
+        },
+        {
+          "midi": 42,
+          "file": "Fs2_v11.mp3"
+        },
+        {
+          "midi": 45,
+          "file": "A2_v11.mp3"
+        },
+        {
+          "midi": 48,
+          "file": "C3_v11.mp3"
+        },
+        {
+          "midi": 51,
+          "file": "Ds3_v11.mp3"
+        },
+        {
+          "midi": 54,
+          "file": "Fs3_v11.mp3"
+        },
+        {
+          "midi": 57,
+          "file": "A3_v11.mp3"
+        },
+        {
+          "midi": 60,
+          "file": "C4_v11.mp3"
+        },
+        {
+          "midi": 63,
+          "file": "Ds4_v11.mp3"
+        },
+        {
+          "midi": 66,
+          "file": "Fs4_v11.mp3"
+        },
+        {
+          "midi": 69,
+          "file": "A4_v11.mp3"
+        },
+        {
+          "midi": 72,
+          "file": "C5_v11.mp3"
+        },
+        {
+          "midi": 75,
+          "file": "Ds5_v11.mp3"
+        },
+        {
+          "midi": 78,
+          "file": "Fs5_v11.mp3"
+        },
+        {
+          "midi": 81,
+          "file": "A5_v11.mp3"
+        },
+        {
+          "midi": 84,
+          "file": "C6_v11.mp3"
+        },
+        {
+          "midi": 87,
+          "file": "Ds6_v11.mp3"
+        },
+        {
+          "midi": 90,
+          "file": "Fs6_v11.mp3"
+        },
+        {
+          "midi": 93,
+          "file": "A6_v11.mp3"
+        },
+        {
+          "midi": 96,
+          "file": "C7_v11.mp3"
+        },
+        {
+          "midi": 99,
+          "file": "Ds7_v11.mp3"
+        },
+        {
+          "midi": 102,
+          "file": "Fs7_v11.mp3"
+        },
+        {
+          "midi": 105,
+          "file": "A7_v11.mp3"
+        },
+        {
+          "midi": 108,
+          "file": "C8_v11.mp3"
+        }
+      ]
+    },
+    {
+      "id": "v16",
+      "maxVelocity": 127,
+      "samples": [
+        {
+          "midi": 21,
+          "file": "A0_v16.mp3"
+        },
+        {
+          "midi": 24,
+          "file": "C1_v16.mp3"
+        },
+        {
+          "midi": 27,
+          "file": "Ds1_v16.mp3"
+        },
+        {
+          "midi": 30,
+          "file": "Fs1_v16.mp3"
+        },
+        {
+          "midi": 33,
+          "file": "A1_v16.mp3"
+        },
+        {
+          "midi": 36,
+          "file": "C2_v16.mp3"
+        },
+        {
+          "midi": 39,
+          "file": "Ds2_v16.mp3"
+        },
+        {
+          "midi": 42,
+          "file": "Fs2_v16.mp3"
+        },
+        {
+          "midi": 45,
+          "file": "A2_v16.mp3"
+        },
+        {
+          "midi": 48,
+          "file": "C3_v16.mp3"
+        },
+        {
+          "midi": 51,
+          "file": "Ds3_v16.mp3"
+        },
+        {
+          "midi": 54,
+          "file": "Fs3_v16.mp3"
+        },
+        {
+          "midi": 57,
+          "file": "A3_v16.mp3"
+        },
+        {
+          "midi": 60,
+          "file": "C4_v16.mp3"
+        },
+        {
+          "midi": 63,
+          "file": "Ds4_v16.mp3"
+        },
+        {
+          "midi": 66,
+          "file": "Fs4_v16.mp3"
+        },
+        {
+          "midi": 69,
+          "file": "A4_v16.mp3"
+        },
+        {
+          "midi": 72,
+          "file": "C5_v16.mp3"
+        },
+        {
+          "midi": 75,
+          "file": "Ds5_v16.mp3"
+        },
+        {
+          "midi": 78,
+          "file": "Fs5_v16.mp3"
+        },
+        {
+          "midi": 81,
+          "file": "A5_v16.mp3"
+        },
+        {
+          "midi": 84,
+          "file": "C6_v16.mp3"
+        },
+        {
+          "midi": 87,
+          "file": "Ds6_v16.mp3"
+        },
+        {
+          "midi": 90,
+          "file": "Fs6_v16.mp3"
+        },
+        {
+          "midi": 93,
+          "file": "A6_v16.mp3"
+        },
+        {
+          "midi": 96,
+          "file": "C7_v16.mp3"
+        },
+        {
+          "midi": 99,
+          "file": "Ds7_v16.mp3"
+        },
+        {
+          "midi": 102,
+          "file": "Fs7_v16.mp3"
+        },
+        {
+          "midi": 105,
+          "file": "A7_v16.mp3"
+        },
+        {
+          "midi": 108,
+          "file": "C8_v16.mp3"
+        }
+      ]
+    }
+  ]
+}

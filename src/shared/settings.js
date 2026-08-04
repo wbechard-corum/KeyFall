@@ -17,6 +17,7 @@ const DEFAULTS = {
   countInBars: 0,                // 0 = start immediately
   lookAheadSeconds: 3,           // height of the falling-note window
   inputLatencyMs: 0,             // positive = your input arrives late
+  instrument: 'synth',           // 'synth' | 'sampled'
 
   // Colors are configurable in the top-level Settings tab. Null for
   // cKeyColor means Cs look like any other white.

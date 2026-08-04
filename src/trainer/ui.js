@@ -3,7 +3,7 @@ import { createPlayback } from './playback.js';
 import {
   playNote, noteOn as audioNoteOn, noteOff as audioNoteOff,
   setSustain as audioSetSustain, allNotesOff as audioAllNotesOff,
-  resume as resumeAudio,
+  resume as resumeAudio, setInstrument as setAudioInstrument,
 } from './audio.js';
 import { parseMIDI } from '../midi/parser.js';
 import { onNote as onMIDINote, onCC as onMIDICC } from '../midi/input.js';
@@ -889,6 +889,9 @@ export function mountTrainer(root) {
   }
   if (getSetting('waitMode')) playback.setWaitMode(true);
   if (getSetting('metronome')) metronome.setEnabled(true);
+  // Restore the chosen piano; the sampled set downloads in the background
+  // and the synth covers every note until it lands.
+  setAudioInstrument(getSetting('instrument') || 'synth');
 
   renderer.resize();
   buildDemos();

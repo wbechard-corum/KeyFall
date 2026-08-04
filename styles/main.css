@@ -2782,3 +2782,21 @@ canvas { display: block; width: 100%; height: 100%; }
   display: inline-block;
   padding-left: 8px;
 }
+
+/* Sample download progress in Settings. */
+.settings-progress {
+  display: inline-block;
+  vertical-align: middle;
+  width: 180px;
+  max-width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.settings-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}

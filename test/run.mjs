@@ -11,7 +11,7 @@ const SKIP = 64;
 
 // Order matters only for readability: cheap unit tests first, then the ones
 // that boot a server, then the ones that drive a browser.
-const ORDER = ['parser', 'playback', 'renderer', 'audio', 'scoring',
+const ORDER = ['parser', 'playback', 'renderer', 'audio', 'sampler', 'scoring',
                'loop', 'practice', 'profiles', 'server', 'reconnect', 'smoke', 'modal-key'];
 const rank = (f) => {
   const i = ORDER.indexOf(f.replace(/\.test\.mjs$/, ''));

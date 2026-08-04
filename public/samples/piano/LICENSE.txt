@@ -1,0 +1,8 @@
+Salamander Grand Piano V3
+Recorded by Alexander Holm.
+Licensed under Creative Commons Attribution 3.0 (CC BY 3.0).
+https://creativecommons.org/licenses/by/3.0/
+
+Samples here were downmixed to mono, resampled to 32 kHz, tail-trimmed
+and re-encoded at 80 kbps for size. Sourced from the
+@audio-samples/piano-mp3-velocity* npm packages.
