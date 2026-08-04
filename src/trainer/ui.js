@@ -1,8 +1,12 @@
 import { createRenderer } from './renderer.js';
 import { createPlayback } from './playback.js';
-import { playNote, resume as resumeAudio } from './audio.js';
+import {
+  playNote, noteOn as audioNoteOn, noteOff as audioNoteOff,
+  setSustain as audioSetSustain, allNotesOff as audioAllNotesOff,
+  resume as resumeAudio,
+} from './audio.js';
 import { parseMIDI } from '../midi/parser.js';
-import { onNote as onMIDINote } from '../midi/input.js';
+import { onNote as onMIDINote, onCC as onMIDICC } from '../midi/input.js';
 import { sendNoteOn, sendNoteOff } from '../midi/output.js';
 import { keyAtPoint } from '../shared/piano-keyboard.js';
 import { HAND_MODES } from '../shared/constants.js';
@@ -154,7 +158,7 @@ export function mountTrainer(root) {
     onEnded: () => { setPlayButtonState(false); showSummary(); },
     onPlayStateChange: (playing) => {
       setPlayButtonState(playing);
-      if (!playing) panicAllOutNotes();
+      if (!playing) { panicAllOutNotes(); audioAllNotesOff(); }
     },
     onWaitChange: () => render(),
     onScoreChange: (score) => renderScore(score),
@@ -162,7 +166,8 @@ export function mountTrainer(root) {
   });
 
   playback.onNotePlay((note) => {
-    playNote(note.midi, note.endTime - note.startTime, note.velocity || 80);
+    const speed = playback.state.playSpeed || 1;
+    playNote(note.midi, (note.endTime - note.startTime) / speed, note.velocity || 80);
     if (midiOutEnabled) sendNoteToKeyboard(note);
   });
 
@@ -646,7 +651,7 @@ export function mountTrainer(root) {
 
   function noteOn(midi, velocity = 90) {
     pressedKeys.set(midi, velocity);
-    playNote(midi, 0.5, velocity);
+    audioNoteOn(midi, velocity);
     playback.reportKeyPress(midi);
     if (midiOutEnabled) {
       const channel = getSetting('midiChannel') ?? 0;
@@ -657,6 +662,7 @@ export function mountTrainer(root) {
 
   function noteOff(midi) {
     pressedKeys.delete(midi);
+    audioNoteOff(midi);
     if (midiOutEnabled) {
       const channel = getSetting('midiChannel') ?? 0;
       sendNoteOff(channel, midi);
@@ -667,11 +673,18 @@ export function mountTrainer(root) {
   const unsubscribeMIDI = onMIDINote(({ type, note, velocity }) => {
     if (type === 'on') {
       pressedKeys.set(note, velocity || 100);
+      audioNoteOn(note, velocity || 100);
       playback.reportKeyPress(note);
     } else {
       pressedKeys.delete(note);
+      audioNoteOff(note);
     }
     render();
+  });
+
+  // Sustain pedal from the keyboard drives the synth's damper.
+  const unsubscribeCC = onMIDICC(({ cc, value }) => {
+    if (cc === 64) audioSetSustain(value >= 64);
   });
 
   function handleResize() {
@@ -840,6 +853,7 @@ export function mountTrainer(root) {
       clearInterval(tickInterval);
       resizeObserver.disconnect();
       unsubscribeMIDI();
+      unsubscribeCC();
       unsubscribeSettings();
       stopSheetPoll();
       window.removeEventListener('resize', handleResize);
