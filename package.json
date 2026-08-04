@@ -1,6 +1,6 @@
 {
   "name": "keyfall",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Open-source piano trainer and universal MIDI keyboard controller.",
   "type": "module",
   "scripts": {

@@ -2,8 +2,8 @@
 
 Open-source piano trainer and universal MIDI keyboard controller. Two tools in one, unified by a shared WebMIDI layer.
 
-- **Trainer** — Falling-notes practice with accuracy scoring, per-hand isolation, A/B section repeat, wait mode, a metronome and count-in, and sheet music alongside.
-- **Controller** — Browse patches, tweak effects, and send SysEx from a phone or tablet — driven by JSON keyboard profiles so any hardware can be supported without code changes.
+- **Trainer** — Falling-notes practice with accuracy scoring, per-hand isolation, A/B section repeat, wait mode, a metronome and count-in, a sampled grand piano, fingering and solfège labels, and sheet music alongside.
+- **Controller** — Browse patches, tweak effects, and edit SysEx parameters from a phone or tablet — driven by JSON keyboard profiles so any hardware can be supported without code changes.
 - **Mirror** — Pair a second device with a 6-digit code and drive the whole thing from an iPad on the music stand.
 
 See `CLAUDE.md` for the architecture, roadmap, and rationale.
@@ -90,7 +90,24 @@ styles/main.css
 | **MET** | Click track locked to the song's tempo map, with accented downbeats. |
 | **Accuracy** | Live percentage, hit count and streak; a summary card at the end of a run. |
 
-Look-ahead, input latency offset, beats per bar and count-in live in **Settings**.
+Look-ahead, input latency offset, beats per bar, count-in, note labels
+(names or solfège), automatic fingering, and the choice between the
+synthesised and sampled piano all live in **Settings**.
+
+### Piano sound
+
+The default synth starts instantly and costs nothing. Switching to the
+**sampled grand** downloads 6.6 MB of Salamander Grand Piano V3 recordings
+(bundled in the repo, served from `public/samples/piano`) and caches them for
+offline use; the synth covers every note until the download finishes.
+
+Samples are by Alexander Holm, licensed [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+To rebuild or re-encode them:
+
+```bash
+npm i --no-save playwright lamejs
+node scripts/build-piano-samples.mjs
+```
 
 ## Adding a keyboard profile
 

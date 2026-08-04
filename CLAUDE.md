@@ -12,7 +12,7 @@ Both modes share a single WebMIDI connection layer. Connect your keyboard once, 
 
 The goal is to fill the gap left by web-based projects that went closed-source (Midiano, Sightread), and to provide something no existing tool does: a browser-based controller that works with specific hardware instruments, not just generic GM.
 
-## Current State (v0.7)
+## Current State (v0.8)
 
 A single Vite app with a shared WebMIDI layer and a mode switcher (LIVE /
 SONGS / PATCHES / SETTINGS), plus a Node backend for the song library and the
@@ -50,9 +50,14 @@ Run `npm run dev:all` to start the front end and the backend together;
 - **Metronome and count-in**: Click track driven by the song's tempo map, with
   accented downbeats and an optional 1-2 bar count-in.
 - **Input offset**: Compensates for MIDI/audio latency before judging.
-- **Audio**: Synthesised piano with register-dependent spectra, velocity-
-  dependent brightness, two detuned strings, hammer noise, real note-off
-  damping and a sustain pedal (CC 64). 32-voice cap with voice stealing.
+- **Audio**: Two instruments behind one facade. A synthesised piano (register-
+  dependent spectra, velocity-dependent brightness, two detuned strings,
+  hammer noise, note-off damping, sustain pedal) that costs nothing to start,
+  and the sampled Salamander Grand — all 88 keys every three semitones across
+  four velocity layers, 6.6 MB, bundled. Nothing downloads until the sampled
+  piano is chosen, and notes fall back to the synth until it lands.
+- **Labels**: Falling notes carry note names or solfège (fixed or movable do),
+  plus optional automatic fingering numbers.
 - **Sheet music**: OpenSheetMusicDisplay view with a playback cursor, from
   MusicXML converted server-side.
 - **WebMIDI input**: Auto-detects keyboards, captures note on/off and CC.
@@ -223,8 +228,12 @@ keyfall/
 │   │   ├── renderer.js        # Canvas rendering (piano, falling notes, grid)
 │   │   ├── playback.js        # Clock, wait mode, hand modes, section repeat
 │   │   ├── scoring.js         # Hit/miss judging, accuracy, combo
+│   │   ├── fingering.js       # Automatic fingering assignment
 │   │   ├── metronome.js       # Click track + count-in from the tempo map
-│   │   ├── audio.js           # Synthesised piano voice, sustain pedal
+│   │   ├── audio.js           # Instrument facade (synth / sampled)
+│   │   ├── audio-context.js   # Shared AudioContext + master bus
+│   │   ├── synth.js           # Synthesised piano voice
+│   │   ├── sampler.js         # Sampled piano playback
 │   │   ├── sheet.js           # OpenSheetMusicDisplay wrapper + cursor
 │   │   ├── library.js         # Songs API client
 │   │   ├── demos.js           # Built-in demo songs
@@ -233,6 +242,7 @@ keyfall/
 │   │   ├── controller.js      # Patch selection, CC sending, SysEx
 │   │   ├── profile-loader.js  # Load, validate and normalise profiles
 │   │   ├── effects-ui.js      # Slider and toggle rendering
+│   │   ├── sysex-ui.js        # SysEx parameter editor
 │   │   └── ui.js              # Controller layout, bank/patch list, LCD
 │   ├── songs/ui.js            # Song library screen
 │   ├── settings/ui.js         # Settings screen
@@ -254,7 +264,8 @@ keyfall/
 │   ├── mirror-server.js       # Songs API + mirror relay + MIDI→MusicXML
 │   └── Dockerfile             # Includes the music21 converter
 ├── test/                      # Test suite — `npm test`
-├── scripts/                   # dev-all, validate-profiles
+├── public/samples/piano/      # Salamander Grand samples (CC BY 3.0)
+├── scripts/                   # dev-all, validate-profiles, build-piano-samples
 ├── docs/
 │   ├── adding-a-profile.md
 │   └── profile-schema.md
@@ -293,7 +304,7 @@ Phases 1-3 are essentially done. Remaining work is listed under "Not done yet".
 - [x] Juno-G patch names for all banks
 - [x] Toggle controls (sustain etc) from profiles
 - [x] Profile contribution guide
-- [ ] SysEx parameter editor UI for Roland DT1 (builders exist; no editor screen)
+- [x] SysEx parameter editor UI for Roland DT1
 
 ### Phase 3: Trainer improvements — mostly done
 - [x] Accuracy scoring: per-note rating colours, running accuracy, summary
@@ -301,17 +312,15 @@ Phases 1-3 are essentially done. Remaining work is listed under "Not done yet".
 - [x] Hand isolation: APP mode plays a hand without scoring it
 - [x] Chord wait mode
 - [x] Metronome, count-in, configurable look-ahead, input latency offset
-- [~] Audio: rewritten synthesis, much closer to a piano, but still not
-      sampled. A sampled backend can drop in behind the same instrument API —
-      the open question is whether tens of megabytes of samples are worth
-      losing the offline-PWA story.
+- [x] Audio: sampled Salamander Grand, bundled and cached for offline use,
+      with the synthesised piano as the instant-start default and fallback.
 
 ### Phase 4: Polish and features
 - [x] Sheet music rendering (OpenSheetMusicDisplay, server-side MusicXML)
 - [x] Note labels
 - [x] MIDI output playback through the keyboard's own sounds
 - [x] Custom colours and themes
-- [ ] Fingering numbers and solfège labels
+- [x] Fingering numbers and solfège labels
 - [ ] Recording mode with playback comparison
 - [ ] Mobile touch improvements (pinch zoom, swipe navigation)
 
@@ -323,11 +332,13 @@ Phases 1-3 are essentially done. Remaining work is listed under "Not done yet".
 - [ ] More profiles: Juno-DS, Yamaha PSR, Korg Minilogue, Nord Stage
 
 ### Not done yet — the honest list
-- Sampled piano audio
-- SysEx parameter editor screen
 - Recording and playback comparison
-- Fingering / solfège labels
-- Any profile beyond Juno-G and Generic GM
+- Mobile touch improvements (pinch zoom, swipe navigation)
+- A documentation site
+- Any profile beyond Juno-G and Generic GM. The Juno-G's SysEx value tables
+  (MFX / chorus / reverb type numbering) are also still unfilled — the editor
+  reads them from the profile, but guessing those numbers would send wrong
+  bytes to real hardware, so they need to come from the MIDI implementation.
 
 ## Architecture Decisions
 
