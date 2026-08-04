@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node test/run.mjs",
+    "dev:server": "DATA_DIR=./.data node server/mirror-server.js",
+    "dev:all": "node scripts/dev-all.mjs",
+    "test:setup": "npm i --no-save playwright && npm --prefix server install"
   },
   "license": "MIT",
   "dependencies": {

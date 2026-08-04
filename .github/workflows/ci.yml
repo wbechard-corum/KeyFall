@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        run: npm --prefix server install
+
+      - name: Build
+        run: npm run build
+
+      # Browser tests are skipped automatically when playwright is absent, so
+      # install it here to get the full suite.
+      - name: Install Playwright + Chromium
+        run: |
+          npm i --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Test
+        run: npm test

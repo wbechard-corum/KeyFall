@@ -5,3 +5,6 @@ dist/
 .vite/
 .env
 .env.local
+
+# Local song storage created by `npm run dev:all`.
+.data/
